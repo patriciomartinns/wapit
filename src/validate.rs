@@ -823,3 +823,203 @@ pub fn validate_outbound(
         outside_window,
     })
 }
+
+#[cfg(test)]
+#[allow(clippy::needless_pass_by_value)]
+mod tests {
+    use serde_json::{Value, json};
+
+    use super::{OutboundContext, SERVICE_WINDOW_MS, validate_outbound};
+    use crate::config::Template;
+
+    fn templates() -> Vec<Template> {
+        serde_json::from_value(json!([
+            {
+                "name": "order_ready", "language": "en_US", "category": "UTILITY",
+                "components": [
+                    { "type": "HEADER", "format": "IMAGE" },
+                    { "type": "BODY", "text": "Order at {{1}} for {{2}}" },
+                ],
+            },
+            {
+                "name": "paused", "language": "en_US", "status": "PAUSED",
+                "components": [{ "type": "BODY", "text": "Hi" }],
+            },
+        ]))
+        .unwrap()
+    }
+
+    fn template_send(header: Value, body: &[&str]) -> Value {
+        let body: Vec<Value> = body
+            .iter()
+            .map(|text| json!({ "type": "text", "text": text }))
+            .collect();
+
+        json!({
+            "messaging_product": "whatsapp", "to": "15550000000", "type": "template",
+            "template": { "name": "order_ready", "language": { "code": "en_US" }, "components": [
+                { "type": "header", "parameters": [header] },
+                { "type": "body", "parameters": body },
+            ] },
+        })
+    }
+
+    fn image() -> Value {
+        json!({ "type": "image", "image": { "link": "https://example.com/a.png" } })
+    }
+
+    fn interactive(interactive: Value) -> Value {
+        json!({ "messaging_product": "whatsapp", "to": "15550000000", "type": "interactive", "interactive": interactive })
+    }
+
+    fn reply(id: &str, title: &str) -> Value {
+        json!({ "type": "reply", "reply": { "id": id, "title": title } })
+    }
+
+    fn rows(count: usize) -> Vec<Value> {
+        (0..count)
+            .map(|index| json!({ "id": format!("row-{index}"), "title": format!("Row {index}") }))
+            .collect()
+    }
+
+    fn list(sections: Value) -> Value {
+        interactive(json!({
+            "type": "list", "body": { "text": "Pick one" },
+            "action": { "button": "Options", "sections": sections },
+        }))
+    }
+
+    fn outcome(payload: &Value) -> Result<(), i64> {
+        let templates = templates();
+        let context = OutboundContext {
+            templates: &templates,
+            last_inbound_at: Some(0),
+            now: SERVICE_WINDOW_MS / 2,
+        };
+
+        validate_outbound(payload, &context)
+            .map(|_| ())
+            .map_err(|error| error.code)
+    }
+
+    #[test]
+    fn template_sends_fail_with_metas_codes() {
+        let cases = [
+            ("valid", template_send(image(), &["Plaza", "Mary"]), Ok(())),
+            (
+                "body count",
+                template_send(image(), &["Plaza"]),
+                Err(132_000),
+            ),
+            (
+                "unknown template",
+                json!({ "messaging_product": "whatsapp", "to": "15550000000", "type": "template",
+                    "template": { "name": "nope", "language": { "code": "en_US" } } }),
+                Err(132_001),
+            ),
+            (
+                "header format",
+                template_send(json!({ "type": "text", "text": "x" }), &["Plaza", "Mary"]),
+                Err(132_012),
+            ),
+            (
+                "new line in a body parameter",
+                template_send(image(), &["Sun\nPlaza", "Mary"]),
+                Err(132_018),
+            ),
+            (
+                "five spaces in a body parameter",
+                template_send(image(), &["Sun     Plaza", "Mary"]),
+                Err(132_018),
+            ),
+            (
+                "paused",
+                json!({ "messaging_product": "whatsapp", "to": "15550000000", "type": "template",
+                    "template": { "name": "paused", "language": { "code": "en_US" } } }),
+                Err(132_015),
+            ),
+        ];
+
+        for (name, payload, expected) in cases {
+            assert_eq!(outcome(&payload), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn reply_buttons_follow_metas_limits() {
+        let body = json!({ "text": "Confirm?" });
+        let cases = [
+            ("one button", vec![reply("yes", "Yes")], Ok(())),
+            ("no buttons", vec![], Err(131_009)),
+            (
+                "four buttons",
+                vec![
+                    reply("a", "A"),
+                    reply("b", "B"),
+                    reply("c", "C"),
+                    reply("d", "D"),
+                ],
+                Err(131_009),
+            ),
+            (
+                "duplicate titles",
+                vec![reply("a", "Same"), reply("b", "Same")],
+                Err(131_009),
+            ),
+            (
+                "title over 20 characters",
+                vec![reply("a", "A title that is far too long")],
+                Err(131_009),
+            ),
+            ("missing id", vec![reply("", "Yes")], Err(100)),
+        ];
+
+        for (name, buttons, expected) in cases {
+            let payload = interactive(json!({
+                "type": "button", "body": body, "action": { "buttons": buttons },
+            }));
+            assert_eq!(outcome(&payload), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn lists_follow_metas_limits() {
+        let cases = [
+            (
+                "one section",
+                list(json!([{ "title": "All", "rows": rows(3) }])),
+                Ok(()),
+            ),
+            (
+                "more than ten rows",
+                list(json!([{ "title": "All", "rows": rows(11) }])),
+                Err(131_009),
+            ),
+            (
+                "more than ten sections",
+                list(json!(
+                    (0..11)
+                        .map(|_| json!({ "title": "S", "rows": rows(0) }))
+                        .collect::<Vec<_>>()
+                )),
+                Err(131_009),
+            ),
+            (
+                "untitled sections among several",
+                list(json!([{ "rows": rows(1) }, { "rows": rows(1) }])),
+                Err(100),
+            ),
+            (
+                "row description over 72 characters",
+                list(
+                    json!([{ "title": "All", "rows": [{ "id": "a", "title": "A", "description": "d".repeat(73) }] }]),
+                ),
+                Err(131_009),
+            ),
+        ];
+
+        for (name, payload, expected) in cases {
+            assert_eq!(outcome(&payload), expected, "{name}");
+        }
+    }
+}

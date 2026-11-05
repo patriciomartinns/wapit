@@ -2,22 +2,20 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 
 use axum::Router;
-use axum::body::{Body, Bytes};
+use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, FromRequest, Multipart, Query, Request, State};
-use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
+use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use regex::Regex;
 use serde_json::{Value, json};
 
-use super::content_disposition;
+use super::{BODY_LIMIT, content_disposition, media_response};
 use crate::config::App;
 use crate::graph_error::GraphError;
 use crate::inbox::{Inbox, InboxError};
 
 static VERSION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^v\d+\.\d+$").expect("valid regex"));
-
-const BODY_LIMIT: usize = 32 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct GraphState {
@@ -162,7 +160,10 @@ async fn route(state: &GraphState, request: Request) -> Result<Response, InboxEr
         .await
         .map_err(|_| {
             GraphError::new(100, "(#100) Invalid parameter")
-                .details("Request body is larger than 32 MB")
+                .details(format!(
+                    "Request body is larger than {} MB",
+                    BODY_LIMIT / 1024 / 1024
+                ))
                 .status(StatusCode::PAYLOAD_TOO_LARGE)
         })?;
     let templates_of_app =
@@ -402,25 +403,9 @@ async fn download_media(inbox: &Inbox, app: &App, media_id: &str) -> Result<Resp
         return Ok((StatusCode::NOT_FOUND, "Not found").into_response());
     };
 
-    let mut response = Response::new(Body::from(bytes));
-    let headers = response.headers_mut();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_str(&media.mime_type)
-            .unwrap_or(HeaderValue::from_static("application/octet-stream")),
-    );
-    headers.insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
-    headers.insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static("sandbox; default-src 'none'"),
-    );
-    headers.insert(
-        header::CONTENT_DISPOSITION,
+    Ok(media_response(
+        bytes,
+        &media.mime_type,
         content_disposition("attachment", media.filename.as_deref().unwrap_or(&media.id)),
-    );
-
-    Ok(response)
+    ))
 }

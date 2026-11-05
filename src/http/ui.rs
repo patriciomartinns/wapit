@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio_stream::wrappers::BroadcastStream;
 
-use super::content_disposition;
+use super::{BODY_LIMIT, content_disposition, media_response};
 use crate::inbox::{Delivered, InboundMedia, Inbox, InboxError, Problem};
 use crate::model::{Contact, MessageStatus};
 use crate::views::{Change, StateSummary};
@@ -26,7 +26,6 @@ use crate::views::{Change, StateSummary};
 #[folder = "public/"]
 struct Assets;
 
-const BODY_LIMIT: usize = 32 * 1024 * 1024;
 const PAGE_POLICY: &str = "default-src 'self'; img-src 'self' data: blob: http: https:; style-src 'self' 'unsafe-inline'; \
     font-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 
@@ -396,36 +395,16 @@ async fn media(State(state): State<UiState>, Path(id): Path<String>) -> ApiResul
     };
 
     let inline = media.mime_type.starts_with("image/") && !media.mime_type.contains("svg");
-    let mut response = Response::new(Body::from(bytes));
-    let headers = response.headers_mut();
-    let content_type = if inline {
-        media.mime_type.as_str()
-    } else {
-        "application/octet-stream"
-    };
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_str(content_type)
-            .unwrap_or(HeaderValue::from_static("application/octet-stream")),
-    );
-    headers.insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
-    headers.insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static("sandbox; default-src 'none'"),
-    );
-    headers.insert(
-        header::CONTENT_DISPOSITION,
-        if inline {
-            HeaderValue::from_static("inline")
-        } else {
-            content_disposition("attachment", media.filename.as_deref().unwrap_or(&media.id))
-        },
-    );
 
-    Ok(response)
+    Ok(if inline {
+        media_response(bytes, &media.mime_type, HeaderValue::from_static("inline"))
+    } else {
+        media_response(
+            bytes,
+            "application/octet-stream",
+            content_disposition("attachment", media.filename.as_deref().unwrap_or(&media.id)),
+        )
+    })
 }
 
 async fn static_asset(method: Method, uri: Uri, _headers: HeaderMap) -> Response {

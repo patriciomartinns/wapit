@@ -86,6 +86,31 @@ pub async fn guard_host(
     }
 }
 
+/// The largest request body either server reads.
+pub const BODY_LIMIT: usize = 32 * 1024 * 1024;
+
+/// A stored media file, served so it can never run script on the origin that serves it.
+pub fn media_response(bytes: Vec<u8>, content_type: &str, disposition: HeaderValue) -> Response {
+    let mut response = Response::new(axum::body::Body::from(bytes));
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_str(content_type)
+            .unwrap_or(HeaderValue::from_static("application/octet-stream")),
+    );
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("sandbox; default-src 'none'"),
+    );
+    headers.insert(header::CONTENT_DISPOSITION, disposition);
+
+    response
+}
+
 pub fn content_disposition(kind: &str, filename: &str) -> HeaderValue {
     let clean: String = filename
         .chars()
