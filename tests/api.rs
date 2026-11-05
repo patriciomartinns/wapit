@@ -1417,6 +1417,82 @@ async fn template_fields_wapit_does_not_model_survive_a_rewrite() {
     );
 }
 
+fn new_template(name: &str) -> Value {
+    json!({ "name": name, "language": "en_US", "category": "UTILITY", "components": [{ "type": "BODY", "text": "Hi" }] })
+}
+
+fn saved_template_names(harness: &Harness) -> Vec<String> {
+    let saved: Value = serde_json::from_str(
+        &std::fs::read_to_string(harness.config.path().join("templates/a.json")).unwrap(),
+    )
+    .unwrap();
+
+    saved
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|template| template["name"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn template_creates_with_a_broken_apps_file_keep_each_other() {
+    let harness = harness().await;
+    harness.ui_get("/api/state").await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    std::fs::write(harness.config.path().join("apps.json"), "{ \"apps\": [").unwrap();
+
+    for name in ["first_new", "second_new"] {
+        let (status, _) = harness
+            .post(
+                "/v23.0/200/message_templates",
+                &new_template(name),
+                "token-a",
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    assert_eq!(
+        saved_template_names(&harness),
+        ["order_ready", "reordered", "first_new", "second_new"]
+    );
+
+    let listed: Value = harness
+        .client
+        .get(format!("{}/v23.0/200/message_templates", harness.graph))
+        .bearer_auth("token-a")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(listed["data"].as_array().unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn a_template_create_never_overwrites_a_broken_templates_file() {
+    let harness = harness().await;
+    let file = harness.config.path().join("templates/a.json");
+    let half_done = "[{ \"name\": \"draft\", ";
+    harness.ui_get("/api/state").await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    std::fs::write(&file, half_done).unwrap();
+
+    let (status, body) = harness
+        .post(
+            "/v23.0/200/message_templates",
+            &new_template("blocked"),
+            "token-a",
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(body["error"]["error_data"]["details"].is_string());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), half_done);
+}
+
 #[tokio::test]
 async fn concurrent_template_creates_all_land() {
     let harness = Arc::new(harness().await);

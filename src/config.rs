@@ -279,6 +279,8 @@ impl ConfigStore {
     }
 
     /// Reads, changes and writes an app's templates under one lock, so concurrent edits never overwrite each other.
+    /// The edit starts from the file on disk, not the cache: the cache keeps the last good version when a file is
+    /// broken, and writing from it would drop a create that landed since or a manual edit in progress.
     /// The file is written to a unique temporary name first, so a crash never leaves it half written.
     pub fn edit_templates<T, E: From<SaveError>>(
         &self,
@@ -289,7 +291,9 @@ impl ConfigStore {
             .writes
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut templates = self.templates_for(app_id).as_ref().clone();
+        let mut templates = self.read_templates(app_id).map_err(|error| {
+            SaveError(format!("templates not saved, fix the file first: {error}"))
+        })?;
         let result = edit(&mut templates)?;
         let file = self.templates_file(app_id);
 
@@ -312,11 +316,14 @@ impl ConfigStore {
             return Err(SaveError(format!("cannot write {}: {error}", file.display())).into());
         }
 
-        self.loaded
+        let mut loaded = self
+            .loaded
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .signature
-            .clear();
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loaded
+            .templates
+            .insert(app_id.to_owned(), Arc::new(templates));
+        loaded.signature.clear();
 
         Ok(result)
     }
