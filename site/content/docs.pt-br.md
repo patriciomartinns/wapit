@@ -102,7 +102,7 @@ Um app rodando em outro container precisa chegar ao wapit por um nome que resolv
 
 | Endpoint | Comportamento |
 | --- | --- |
-| `POST /{phone_number_id}/messages` | Texto, template, interativa (botões de resposta, lista, botão de URL), mídia, reação, localização, contatos. `status: read`, com indicador de digitação opcional |
+| `POST /{phone_number_id}/messages` | Texto, template, interativa (botões de resposta, lista, botão de URL, flow, produto único e múltiplos produtos, catálogo, pedido de permissão para ligar), mídia, reação, localização, contatos. `status: read`, com indicador de digitação opcional |
 | `POST /{phone_number_id}/media` | Envia um arquivo e devolve o id. Só aceita os tipos que a Meta suporta, até 5 MB para imagens, 16 MB para áudio e vídeo, 100 MB para documentos e 500 KB para figurinhas |
 | `GET /{media_id}`, `DELETE /{media_id}` | Metadados da mídia com URL de download, e exclusão |
 | `GET /{waba_id}/message_templates` | Os templates locais, com filtros por `name`, `status`, `category` e `language`, e paginados com `limit`, `after` e `before` |

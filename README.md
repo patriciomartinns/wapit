@@ -128,7 +128,7 @@ An app running in another container must reach wapit by a name that resolves the
 
 | Endpoint | Behavior |
 | --- | --- |
-| `POST /{phone_number_id}/messages` | Text, template, interactive (reply buttons, list, call to action URL), media, reaction, location, contacts. `status: read`, with an optional typing indicator |
+| `POST /{phone_number_id}/messages` | Text, template, interactive (reply buttons, list, call to action URL, flow, single and multi product, catalog, call permission request), media, reaction, location, contacts. `status: read`, with an optional typing indicator |
 | `POST /{phone_number_id}/media` | Uploads a file and returns its id. Only Meta's supported types are accepted, up to 5 MB for images, 16 MB for audio and video, 100 MB for documents and 500 KB for stickers |
 | `GET /{media_id}`, `DELETE /{media_id}` | Media metadata with a download URL, and deletion |
 | `GET /{waba_id}/message_templates` | The local templates, filtered by `name`, `status`, `category` and `language`, and paged with `limit`, `after` and `before` |

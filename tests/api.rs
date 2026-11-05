@@ -459,6 +459,35 @@ async fn interactive_reply_button_titles_are_limited_to_20_characters() {
 }
 
 #[tokio::test]
+async fn interactive_messages_need_a_type_and_flows_need_their_parameters() {
+    let harness = harness().await;
+    let send = |interactive: Value| json!({ "messaging_product": "whatsapp", "to": "15550000001", "type": "interactive", "interactive": interactive });
+    let untyped = harness
+        .post(
+            "/v26.0/100/messages",
+            &send(json!({ "body": { "text": "Hi" }, "action": {} })),
+            "token-a",
+        )
+        .await;
+    let flow = harness
+        .post(
+            "/v26.0/100/messages",
+            &send(json!({ "type": "flow", "body": { "text": "Book a table" }, "action": { "name": "flow", "parameters": {
+                "flow_message_version": "3", "flow_id": "1234", "flow_cta": "Book",
+            } } })),
+            "token-a",
+        )
+        .await;
+
+    assert_eq!(untyped.0, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        untyped.1["error"]["message"],
+        "(#100) The parameter interactive['type'] is required."
+    );
+    assert_eq!(flow.0, StatusCode::OK);
+}
+
+#[tokio::test]
 async fn the_waba_pricing_query_gets_an_empty_well_formed_result() {
     let harness = harness().await;
     let response = harness

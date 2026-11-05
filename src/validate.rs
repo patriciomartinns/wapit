@@ -559,8 +559,131 @@ fn copy_code(parameter: &Json, index: usize) -> Result<String, GraphError> {
         })
 }
 
+fn display_button(kind: &str, text: String) -> Button {
+    Button {
+        kind: kind.into(),
+        text,
+        id: None,
+        url: None,
+        payload: None,
+        description: None,
+    }
+}
+
+fn require_action_name(action: &Json, name: &str) -> Result<(), GraphError> {
+    match string(action.get("name")) {
+        Some(found) if found == name => Ok(()),
+        Some(found) => Err(GraphError::invalid(format!(
+            "interactive['action']['name']: must be {name}, received {found}"
+        ))),
+        None => Err(GraphError::required("interactive['action']['name']")),
+    }
+}
+
+fn render_flow(action: &Json) -> Result<Button, GraphError> {
+    require_action_name(action, "flow")?;
+    let parameters = object(action.get("parameters"))
+        .ok_or_else(|| GraphError::required("interactive['action']['parameters']"))?;
+    let version = parameters
+        .get("flow_message_version")
+        .map(|version| match version {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        });
+
+    if version.as_deref() != Some("3") {
+        return Err(GraphError::invalid(
+            "interactive['action']['parameters']['flow_message_version']: must be 3",
+        ));
+    }
+
+    match (
+        string(parameters.get("flow_id")).filter(|id| !id.is_empty()),
+        string(parameters.get("flow_name")).filter(|name| !name.is_empty()),
+    ) {
+        (Some(_), Some(_)) => {
+            return Err(GraphError::invalid(
+                "interactive['action']['parameters']: flow_id cannot be used with flow_name",
+            ));
+        }
+        (None, None) => {
+            return Err(GraphError::required(
+                "interactive['action']['parameters']['flow_id']",
+            ));
+        }
+        _ => {}
+    }
+
+    Ok(display_button(
+        "flow",
+        require_length(
+            parameters.get("flow_cta"),
+            "interactive['action']['parameters']['flow_cta']",
+            30,
+        )?,
+    ))
+}
+
+fn require_product(item: &Json, field: &str) -> Result<String, GraphError> {
+    string(item.get("product_retailer_id"))
+        .filter(|id| !id.trim().is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| GraphError::required(field))
+}
+
+fn render_product_list(action: &Json) -> Result<Vec<Button>, GraphError> {
+    let sections = objects(action.get("sections"));
+
+    if !(1..=10).contains(&sections.len()) {
+        return Err(GraphError::invalid(format!(
+            "interactive['action']['sections']: must contain between 1 and 10 sections, received {}",
+            sections.len()
+        )));
+    }
+
+    let mut products = Vec::new();
+
+    for (index, section) in sections.iter().enumerate() {
+        require_length(
+            section.get("title"),
+            &format!("sections[{index}]['title']"),
+            24,
+        )?;
+        let items = objects(section.get("product_items"));
+
+        if items.is_empty() {
+            return Err(GraphError::required(&format!(
+                "sections[{index}]['product_items']"
+            )));
+        }
+
+        for (item_index, item) in items.iter().enumerate() {
+            products.push(display_button(
+                "product",
+                require_product(
+                    item,
+                    &format!(
+                        "sections[{index}]['product_items'][{item_index}]['product_retailer_id']"
+                    ),
+                )?,
+            ));
+        }
+    }
+
+    if products.len() > 30 {
+        return Err(GraphError::invalid(format!(
+            "interactive['action']['sections']: must contain at most 30 products, received {}",
+            products.len()
+        )));
+    }
+
+    Ok(products)
+}
+
 fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
-    let kind = string(interactive.get("type"));
+    let kind = string(interactive.get("type"))
+        .filter(|kind| !kind.is_empty())
+        .ok_or_else(|| GraphError::required("interactive['type']"))?;
     let body = object(interactive.get("body"));
     let header = object(interactive.get("header"));
     let footer = object(interactive.get("footer"));
@@ -575,7 +698,7 @@ fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
         footer: footer
             .map(|footer| require_length(footer.get("text"), "interactive['footer']['text']", 60))
             .transpose()?,
-        ..Rendered::of_kind(format!("interactive_{}", kind.unwrap_or("unknown")))
+        ..Rendered::of_kind(format!("interactive_{kind}"))
     };
 
     if let Some(header) = header.filter(|header| string(header.get("type")) == Some("text")) {
@@ -583,7 +706,7 @@ fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
     }
 
     match kind {
-        Some("button") => {
+        "button" => {
             rendered.body = Some(require_length(
                 body_text,
                 "interactive['body']['text']",
@@ -637,7 +760,7 @@ fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
 
             rendered.buttons = Some(rendered_buttons);
         }
-        Some("list") => {
+        "list" => {
             rendered.body = Some(require_length(
                 body_text,
                 "interactive['body']['text']",
@@ -706,7 +829,7 @@ fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
 
             rendered.buttons = Some(rendered_rows);
         }
-        Some("cta_url") => {
+        "cta_url" => {
             let parameters = object(action.get("parameters"));
             rendered.body = Some(require_length(
                 body_text,
@@ -729,6 +852,68 @@ fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
                 payload: None,
                 description: None,
             }]);
+        }
+        "flow" => {
+            rendered.body = Some(require_length(
+                body_text,
+                "interactive['body']['text']",
+                1024,
+            )?);
+            rendered.buttons = Some(vec![render_flow(action)?]);
+        }
+        "product" => {
+            if header.is_some() {
+                return Err(GraphError::invalid(
+                    "interactive['header']: cannot be set for a product message",
+                ));
+            }
+
+            string(action.get("catalog_id"))
+                .filter(|id| !id.trim().is_empty())
+                .ok_or_else(|| GraphError::required("interactive['action']['catalog_id']"))?;
+            rendered.body = body_text
+                .map(|_| require_length(body_text, "interactive['body']['text']", 1024))
+                .transpose()?;
+            rendered.buttons = Some(vec![display_button(
+                "product",
+                require_product(action, "interactive['action']['product_retailer_id']")?,
+            )]);
+        }
+        "product_list" => {
+            if header.and_then(|header| string(header.get("type"))) != Some("text") {
+                return Err(GraphError::required("interactive['header']"));
+            }
+
+            string(action.get("catalog_id"))
+                .filter(|id| !id.trim().is_empty())
+                .ok_or_else(|| GraphError::required("interactive['action']['catalog_id']"))?;
+            rendered.body = Some(require_length(
+                body_text,
+                "interactive['body']['text']",
+                1024,
+            )?);
+            rendered.buttons = Some(render_product_list(action)?);
+        }
+        "catalog_message" => {
+            require_action_name(action, "catalog_message")?;
+            rendered.body = Some(require_length(
+                body_text,
+                "interactive['body']['text']",
+                1024,
+            )?);
+            rendered.buttons = Some(vec![display_button("catalog", String::new())]);
+        }
+        "call_permission_request" => {
+            if header.is_some() || footer.is_some() {
+                return Err(GraphError::invalid(
+                    "interactive: a call permission request does not support header or footer",
+                ));
+            }
+
+            require_action_name(action, "call_permission_request")?;
+            rendered.body = body_text
+                .map(|_| require_length(body_text, "interactive['body']['text']", 1024))
+                .transpose()?;
         }
         _ => {
             rendered.body = string(body_text).map(str::to_owned);
@@ -1044,6 +1229,119 @@ mod tests {
             let payload = interactive(json!({
                 "type": "button", "body": body, "action": { "buttons": buttons },
             }));
+            assert_eq!(outcome(&payload), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn other_interactive_types_need_their_required_fields() {
+        let flow = |parameters: Value| {
+            interactive(
+                json!({ "type": "flow", "body": { "text": "Book" }, "action": { "name": "flow", "parameters": parameters } }),
+            )
+        };
+        let product_list = |header: Value, items: usize| {
+            let items: Vec<Value> = (0..items)
+                .map(|index| json!({ "product_retailer_id": format!("sku-{index}") }))
+                .collect();
+            interactive(json!({
+                "type": "product_list", "header": header, "body": { "text": "Pick" },
+                "action": { "catalog_id": "1", "sections": [{ "title": "All", "product_items": items }] },
+            }))
+        };
+        let cases = [
+            (
+                "no type",
+                interactive(json!({ "body": { "text": "Hi" }, "action": {} })),
+                Err(100),
+            ),
+            (
+                "flow",
+                flow(json!({ "flow_message_version": "3", "flow_id": "1", "flow_cta": "Book" })),
+                Ok(()),
+            ),
+            (
+                "flow with id and name",
+                flow(
+                    json!({ "flow_message_version": "3", "flow_id": "1", "flow_name": "x", "flow_cta": "Book" }),
+                ),
+                Err(131_009),
+            ),
+            (
+                "flow without cta",
+                flow(json!({ "flow_message_version": "3", "flow_id": "1" })),
+                Err(100),
+            ),
+            (
+                "flow version 2",
+                flow(json!({ "flow_message_version": "2", "flow_id": "1", "flow_cta": "Book" })),
+                Err(131_009),
+            ),
+            (
+                "product",
+                interactive(
+                    json!({ "type": "product", "action": { "catalog_id": "1", "product_retailer_id": "sku" } }),
+                ),
+                Ok(()),
+            ),
+            (
+                "product with a header",
+                interactive(
+                    json!({ "type": "product", "header": { "type": "text", "text": "x" }, "action": { "catalog_id": "1", "product_retailer_id": "sku" } }),
+                ),
+                Err(131_009),
+            ),
+            (
+                "product without retailer id",
+                interactive(json!({ "type": "product", "action": { "catalog_id": "1" } })),
+                Err(100),
+            ),
+            (
+                "product list",
+                product_list(json!({ "type": "text", "text": "Menu" }), 2),
+                Ok(()),
+            ),
+            (
+                "product list without header",
+                product_list(Value::Null, 2),
+                Err(100),
+            ),
+            (
+                "product list over 30 products",
+                product_list(json!({ "type": "text", "text": "Menu" }), 31),
+                Err(131_009),
+            ),
+            (
+                "catalog",
+                interactive(
+                    json!({ "type": "catalog_message", "body": { "text": "Browse" }, "action": { "name": "catalog_message" } }),
+                ),
+                Ok(()),
+            ),
+            (
+                "catalog without body",
+                interactive(
+                    json!({ "type": "catalog_message", "action": { "name": "catalog_message" } }),
+                ),
+                Err(100),
+            ),
+            (
+                "call permission",
+                interactive(
+                    json!({ "type": "call_permission_request", "action": { "name": "call_permission_request" } }),
+                ),
+                Ok(()),
+            ),
+            (
+                "call permission with a footer",
+                interactive(
+                    json!({ "type": "call_permission_request", "footer": { "text": "x" }, "action": { "name": "call_permission_request" } }),
+                ),
+                Err(131_009),
+            ),
+        ];
+
+        for (name, payload, expected) in cases {
             assert_eq!(outcome(&payload), expected, "{name}");
         }
     }

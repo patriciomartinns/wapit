@@ -344,7 +344,7 @@ function buttonsHtml(message) {
     const tappable = (button) => ['reply', 'list_reply', 'quick_reply'].includes(button.type);
 
     const rows = buttons.map((button, index) => {
-        const label = `${buttonIcon(button.type)}<span>${escapeHtml(button.text)}</span>`;
+        const label = `${buttonIcon(button.type)}<span>${escapeHtml(button.text || t(`button.kind.${button.type}`))}</span>`;
         const target = buttonTarget(button);
         const title = target === '' ? '' : ` title="${escapeHtml(target)}"`;
 
@@ -370,7 +370,7 @@ function buttonsDetail(message) {
     const rows = buttons.map((button) => {
         const target = buttonTarget(button);
 
-        return `<li><span class="what">${escapeHtml(button.text)}</span><span class="kind">${escapeHtml(t(`button.kind.${button.type}`))}</span>${target ? `<span class="target mono">${escapeHtml(target)}</span>` : ''}</li>`;
+        return `<li><span class="what">${escapeHtml(button.text || t(`button.kind.${button.type}`))}</span><span class="kind">${escapeHtml(t(`button.kind.${button.type}`))}</span>${target ? `<span class="target mono">${escapeHtml(target)}</span>` : ''}</li>`;
     }).join('');
 
     return `<section class="section"><h3>${t('inspector.buttons')}</h3><ul class="buttons-log">${rows}</ul></section>`;
