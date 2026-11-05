@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1
+# Packages the musl binaries built by the release workflow, so the multi-arch image needs no emulated compile.
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS certs
+RUN apk add --no-cache ca-certificates && mkdir -p /out/data && chown 1000:1000 /out/data
+
+FROM scratch
+ARG TARGETARCH
+COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=certs --chown=1000:1000 /out/data /data
+COPY --chmod=0755 dist/linux-${TARGETARCH}/wapit /wapit
+ENV WAPIT_CONFIG_DIR=/app/config \
+    WAPIT_DATA_DIR=/data \
+    WAPIT_HOST=0.0.0.0
+VOLUME ["/data"]
+EXPOSE 8026 8027
+USER 1000:1000
+HEALTHCHECK --interval=10s --timeout=3s --retries=5 CMD ["/wapit", "healthcheck"]
+ENTRYPOINT ["/wapit"]

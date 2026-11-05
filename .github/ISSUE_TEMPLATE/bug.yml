@@ -1,0 +1,33 @@
+name: Bug report
+description: wapit behaves differently from the WhatsApp Cloud API, or breaks
+labels: [bug]
+body:
+  - type: textarea
+    id: request
+    attributes:
+      label: What your app sent
+      description: Request path and JSON body, with tokens removed.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What wapit did
+      description: The response, the webhook it sent, or what the inbox showed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What Meta does
+      description: Meta's response for the same request, with a link to its documentation if you have one.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version and how you run it
+      placeholder: wapit 0.1.0, Homebrew on macOS
+    validations:
+      required: true

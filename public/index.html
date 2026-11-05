@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0e0e0e" media="(prefers-color-scheme: dark)">
+    <title>wapit</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/fonts/fonts.css">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="layout">
+    <aside class="sidebar">
+        <header class="brand">
+            <div class="brand-name">
+                <svg class="brand-mark" width="22" height="22" viewBox="0 0 44 44" fill="none" aria-hidden="true">
+                    <rect x="6" y="10" width="32" height="22" rx="3" stroke="currentColor" stroke-width="3"/>
+                    <path d="M6 13l16 10 16-10" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+                    <rect x="26" y="26" width="14" height="10" rx="2" fill="var(--color-action)"/>
+                </svg>
+                <h1>wapit</h1>
+                <span class="port" id="api-port"></span>
+            </div>
+            <button type="button" class="text-button" id="clear-all" data-i18n="page.clearAll">Clear all</button>
+        </header>
+        <p class="banner" id="config-banner" role="status" hidden></p>
+        <nav id="apps" class="apps" data-i18n-aria-label="page.apps"></nav>
+    </aside>
+
+    <main class="chat" id="chat">
+        <section class="empty-chat" id="empty-chat">
+            <svg width="44" height="44" viewBox="0 0 44 44" fill="none" aria-hidden="true">
+                <rect x="6" y="10" width="32" height="22" rx="3" stroke="currentColor" stroke-width="2"/>
+                <path d="M6 13l16 10 16-10" stroke="currentColor" stroke-width="2"/>
+                <rect x="26" y="26" width="14" height="10" rx="2" fill="var(--color-action)"/>
+            </svg>
+            <div>
+                <h2 id="empty-title"></h2>
+                <p id="empty-text"></p>
+            </div>
+            <div class="env" id="empty-env">
+                <span data-i18n="page.envLabel">Graph API base URL for each app</span>
+                <code id="api-url"></code>
+            </div>
+            <button type="button" class="primary" id="empty-start"></button>
+        </section>
+
+        <header class="chat-head" id="chat-head" hidden>
+            <div>
+                <h2 id="chat-title"></h2>
+                <p id="chat-meta"></p>
+            </div>
+            <div class="chat-actions">
+                <div class="window" id="chat-window"><strong></strong><span></span></div>
+                <button type="button" class="text-button danger" id="delete-conversation" data-i18n="page.deleteConversation">Delete conversation</button>
+            </div>
+        </header>
+        <div class="messages" id="messages" hidden></div>
+        <p class="typing" id="typing" hidden data-i18n="page.typing">The app is typing…</p>
+        <form class="composer" id="composer" hidden>
+            <p class="hint" id="composer-hint"></p>
+            <div class="attachment" id="attachment" hidden>
+                <span id="attachment-name"></span>
+                <button type="button" class="text-button" id="attachment-clear" data-i18n="page.removeAttachment">Remove attachment</button>
+            </div>
+            <div class="composer-row">
+                <label class="attach" data-i18n-title="page.attachTitle">
+                    <input type="file" id="attach" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,audio/*,video/*">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16.5 6.5 8.4 14.6a2 2 0 1 0 2.8 2.8l8.5-8.5a4 4 0 0 0-5.7-5.7l-8.6 8.6a6 6 0 0 0 8.5 8.5l6.4-6.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                    <span class="sr-only" data-i18n="page.attach">Attach a file</span>
+                </label>
+                <textarea id="text" rows="1" data-i18n-placeholder="page.textPlaceholder" data-i18n-aria-label="page.text"></textarea>
+                <button type="submit" class="primary" id="send" data-i18n="page.send">Send as user</button>
+            </div>
+        </form>
+    </main>
+
+    <aside class="inspector" id="inspector" hidden>
+        <header class="inspector-head">
+            <h2 id="inspector-title" data-i18n="page.message">Message</h2>
+            <button type="button" class="text-button" id="inspector-close" data-i18n="page.close">Close</button>
+        </header>
+        <div id="inspector-body" class="inspector-body"></div>
+    </aside>
+</div>
+
+<dialog id="new-conversation" aria-labelledby="new-title">
+    <form id="new-conversation-form">
+        <div>
+            <h2 id="new-title" data-i18n="page.newTitle">New conversation</h2>
+            <p class="hint" data-i18n="page.newHint">The first message opens the 24h window and goes to the app's webhook</p>
+        </div>
+        <div class="fields">
+            <label id="new-app-field"><span data-i18n="page.app">App</span>
+                <select id="new-app"></select>
+            </label>
+            <label><span data-i18n="page.number">User number</span>
+                <input id="new-number" class="mono" inputmode="text" autocomplete="off" placeholder="15550000000" required>
+                <small data-i18n="page.numberHint">Country and area code, digits only, or a BSUID like BR.1349120865</small>
+            </label>
+            <label><span data-i18n="page.name">Profile name</span>
+                <input id="new-name" autocomplete="off" data-i18n-placeholder="page.namePlaceholder">
+            </label>
+            <label><span data-i18n="page.firstMessage">First message</span>
+                <textarea id="new-text" rows="3" required></textarea>
+            </label>
+        </div>
+        <p class="form-error" id="new-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+            <button type="button" class="text-button" id="new-cancel" data-i18n="page.cancel">Cancel</button>
+            <button type="submit" class="primary" data-i18n="page.send">Send as user</button>
+        </div>
+    </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" popover="manual"></div>
+<script src="/app.js" type="module"></script>
+</body>
+</html>

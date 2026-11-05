@@ -1,0 +1,56 @@
+[package]
+name = "wapit"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+description = "A local WhatsApp Cloud API mock and inbox for development"
+license = "MIT"
+repository = "https://github.com/patriciomartinns/wapit"
+readme = "README.md"
+keywords = ["whatsapp", "mock", "webhook", "testing", "development"]
+categories = ["development-tools", "development-tools::testing", "web-programming::http-server"]
+publish = false
+
+[dependencies]
+axum = { version = "0.8.9", features = ["multipart"] }
+base64 = "0.23"
+clap = { version = "4", features = ["derive", "env"] }
+futures-util = "0.3"
+hex = "0.4"
+hmac = "0.13"
+mime_guess = "2"
+percent-encoding = "2"
+rand = "0.10"
+regex = "1"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "http2", "json", "query"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
+rust-embed = "8"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.11"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "fs"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "multipart"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+too_many_lines = "allow"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

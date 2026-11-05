@@ -1,0 +1,21 @@
+name: wapit
+
+services:
+  wapit:
+    build: .
+    image: wapit:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8026:8026"
+      - "127.0.0.1:8027:8027"
+    environment:
+      WAPIT_PUBLIC_API_URL: http://127.0.0.1:8027
+      WAPIT_LOOPBACK_HOST: host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - wapit_data:/data
+      - ./config:/app/config
+
+volumes:
+  wapit_data:

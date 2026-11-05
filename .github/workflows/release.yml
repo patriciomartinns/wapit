@@ -1,0 +1,187 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-24.04, docker: amd64 }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, docker: arm64 }
+          - { target: x86_64-apple-darwin, os: macos-15-intel }
+          - { target: aarch64-apple-darwin, os: macos-15 }
+          - { target: x86_64-pc-windows-msvc, os: windows-2025 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the tag matches Cargo.toml
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          test "v${version}" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} does not match version ${version}"; exit 1; }
+      - name: Install musl
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: rustup target add "${TARGET}"
+        env:
+          TARGET: ${{ matrix.target }}
+      - run: cargo test --locked --release --target "${TARGET}"
+        env:
+          TARGET: ${{ matrix.target }}
+      - run: cargo build --release --locked --target "${TARGET}"
+        env:
+          TARGET: ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          DOCKER_ARCH: ${{ matrix.docker }}
+        run: |
+          name="wapit-${GITHUB_REF_NAME}-${TARGET}"
+          mkdir -p "package/${name}" out
+          binary=wapit
+          [[ "${TARGET}" == *windows* ]] && binary=wapit.exe
+          cp "target/${TARGET}/release/${binary}" README.md LICENSE "package/${name}/"
+          if [[ "${TARGET}" == *windows* ]]; then
+            (cd package && 7z a "../out/${name}.zip" "${name}" > /dev/null)
+          else
+            tar -C package -czf "out/${name}.tar.gz" "${name}"
+          fi
+          if [ -n "${DOCKER_ARCH}" ]; then
+            mkdir -p "dist/linux-${DOCKER_ARCH}"
+            cp "target/${TARGET}/release/wapit" "dist/linux-${DOCKER_ARCH}/wapit"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: archive-${{ matrix.target }}
+          path: out/*
+          if-no-files-found: error
+      - if: matrix.docker != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docker-${{ matrix.docker }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: archive-*
+          path: out
+          merge-multiple: true
+      - name: Checksums
+        run: cd out && sha256sum -- * > SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: out/*
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" out/* --repo "${GITHUB_REPOSITORY}" --title "${GITHUB_REF_NAME}" --generate-notes --verify-tag
+
+  image:
+    name: Container image
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: docker-*
+          path: dist
+          merge-multiple: true
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+      - id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.release
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  homebrew:
+    name: Homebrew tap
+    needs: release
+    runs-on: ubuntu-24.04
+    environment: homebrew
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Update the formula in patriciomartinns/homebrew-tap
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
+        run: |
+          if [ -z "${TAP_KEY}" ]; then echo "HOMEBREW_TAP_SSH_KEY is not set; skipping the tap update"; exit 0; fi
+          gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --pattern SHA256SUMS
+          scripts/homebrew-formula.sh "${GITHUB_REF_NAME}" SHA256SUMS > wapit.rb
+
+          ssh_dir="${RUNNER_TEMP}/tap-ssh"
+          mkdir -m 700 "${ssh_dir}"
+          printf '%s\n' "${TAP_KEY}" > "${ssh_dir}/key"
+          chmod 600 "${ssh_dir}/key"
+          # GitHub's published host key (https://api.github.com/meta), so the push never trusts a key on first use.
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "${ssh_dir}/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i ${ssh_dir}/key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${ssh_dir}/known_hosts"
+
+          git clone --depth 1 git@github.com:patriciomartinns/homebrew-tap.git tap
+          mkdir -p tap/Formula && cp wapit.rb tap/Formula/wapit.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/wapit.rb
+          git diff --cached --quiet && exit 0
+          git commit -m "wapit ${GITHUB_REF_NAME}"
+          git push

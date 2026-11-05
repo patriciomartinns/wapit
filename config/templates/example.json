@@ -1,0 +1,37 @@
+[
+    {
+        "name": "order_ready",
+        "language": "en_US",
+        "status": "APPROVED",
+        "category": "UTILITY",
+        "components": [
+            { "type": "HEADER", "format": "TEXT", "text": "Order {{1}}" },
+            { "type": "BODY", "text": "Hi {{1}}, your order is ready for pickup at {{2}}.\n\nPickup code: *{{3}}*" },
+            { "type": "FOOTER", "text": "Example Shop" },
+            {
+                "type": "BUTTONS",
+                "buttons": [
+                    { "type": "URL", "text": "Track order", "url": "https://shop.example/orders/{{1}}" },
+                    { "type": "QUICK_REPLY", "text": "Talk to us" }
+                ]
+            }
+        ]
+    },
+    {
+        "name": "appointment_reminder",
+        "language": "en_US",
+        "status": "APPROVED",
+        "category": "UTILITY",
+        "parameter_format": "NAMED",
+        "components": [
+            { "type": "BODY", "text": "Hi {{customer_name}}, see you on {{date}} at {{time}}." },
+            {
+                "type": "BUTTONS",
+                "buttons": [
+                    { "type": "QUICK_REPLY", "text": "Confirm" },
+                    { "type": "QUICK_REPLY", "text": "Reschedule" }
+                ]
+            }
+        ]
+    }
+]

@@ -1,0 +1,18 @@
+name: Feature request
+description: An endpoint, payload or inbox action wapit should support
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem in your app
+      description: What you are trying to test locally and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would solve it
+      description: The Graph API endpoint, webhook or inbox action, with a link to Meta's documentation when it exists.
+    validations:
+      required: true

@@ -1,0 +1,9 @@
+# Trust a local development CA for webhooks to https hosts, e.g. Laravel Herd's *.test sites:
+#   WAPIT_CA_PEM="$HOME/Library/Application Support/Herd/config/valet/CA/LaravelValetCASelfSigned.pem" \
+#     docker compose -f compose.yaml -f compose.local-ca.yaml up -d
+services:
+  wapit:
+    environment:
+      WAPIT_CA_CERTS: /certs/local-ca.pem
+    volumes:
+      - "${WAPIT_CA_PEM:?Set WAPIT_CA_PEM to the PEM file of your local CA}:/certs/local-ca.pem:ro"

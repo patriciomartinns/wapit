@@ -1,0 +1,17 @@
+{
+    "apps": [
+        {
+            "id": "example",
+            "name": "Example Shop",
+            "phone_number_id": "100000000000002",
+            "display_phone_number": "+1 555 0123",
+            "waba_id": "200000000000002",
+            "access_token": "wapit-example-token",
+            "app_secret": "wapit-example-secret",
+            "webhook_url": "http://localhost:8000/webhooks/whatsapp",
+            "verify_token": "wapit-example-verify",
+            "auto_statuses": ["sent", "delivered"],
+            "sync": { "waba_id": "REAL_WABA_ID", "token_env": "WAPIT_SYNC_TOKEN", "graph_version": "v23.0" }
+        }
+    ]
+}

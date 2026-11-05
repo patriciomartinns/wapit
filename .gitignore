@@ -1,0 +1,7 @@
+target/
+data/
+config/apps.json
+config/templates/*.json
+!config/templates/example.json
+config/templates/*.bak
+.DS_Store
