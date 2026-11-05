@@ -21,6 +21,29 @@ struct Page {
 #[derive(Deserialize)]
 struct Paging {
     next: Option<String>,
+    cursors: Option<Cursors>,
+}
+
+#[derive(Deserialize)]
+struct Cursors {
+    after: Option<String>,
+}
+
+impl Paging {
+    /// Meta's `paging.next` URL can carry the access token in its query string, so wapit never requests it or
+    /// prints it. It only reads the `after` cursor and builds the next page on the real Graph host itself.
+    fn after(self) -> Result<Option<String>, String> {
+        if self.next.is_none() {
+            return Ok(None);
+        }
+        self.cursors
+            .and_then(|cursors| cursors.after)
+            .filter(|after| !after.is_empty())
+            .map(Some)
+            .ok_or_else(|| {
+                "Meta sent a next page without an after cursor; the local file was kept".to_string()
+            })
+    }
 }
 
 #[derive(Deserialize)]
@@ -34,6 +57,11 @@ const FIELDS: &str = "id,name,language,status,category,sub_category,previous_cat
 
 fn first_page(version: &str, waba_id: &str) -> String {
     format!("{REAL_GRAPH}/{version}/{waba_id}/message_templates?fields={FIELDS}&limit=100")
+}
+
+fn page_after(version: &str, waba_id: &str, after: &str) -> String {
+    let after = percent_encoding::utf8_percent_encode(after, percent_encoding::NON_ALPHANUMERIC);
+    format!("{}&after={after}", first_page(version, waba_id))
 }
 
 /// Copies the app's templates from its real `WhatsApp` Business Account into `templates/<app>.json`.
@@ -69,6 +97,7 @@ pub async fn run(config: &ConfigStore, app_id: &str) -> Result<String, String> {
         .map_err(|error| error.to_string())?;
     let mut next = Some(first_page(version, &sync.waba_id));
     let mut templates: Vec<Template> = Vec::new();
+    let mut cursors = std::collections::HashSet::new();
 
     while let Some(url) = next.take() {
         let response = client
@@ -76,23 +105,34 @@ pub async fn run(config: &ConfigStore, app_id: &str) -> Result<String, String> {
             .bearer_auth(&token)
             .send()
             .await
-            .map_err(|error| format!("Meta did not answer: {error}"))?;
+            .map_err(|error| format!("Meta did not answer: {}", error.without_url()))?;
         let status = response.status();
-        let page: Page = response
-            .json()
+        let body = response
+            .bytes()
             .await
-            .map_err(|error| format!("Meta returned an unreadable page: {error}"))?;
+            .map_err(|error| format!("Meta did not answer: {}", error.without_url()))?;
 
         if !status.is_success() {
-            let message = page
-                .error
+            let message = serde_json::from_slice::<Page>(&body)
+                .ok()
+                .and_then(|page| page.error)
                 .and_then(|error| error.message)
                 .unwrap_or_else(|| status.to_string());
             return Err(format!("Meta refused to list the templates: {message}"));
         }
 
+        let page: Page = serde_json::from_slice(&body)
+            .map_err(|error| format!("Meta returned an unreadable page: {error}"))?;
         templates.extend(page.data);
-        next = page.paging.and_then(|paging| paging.next);
+
+        if let Some(after) = page.paging.map(Paging::after).transpose()?.flatten() {
+            if !cursors.insert(after.clone()) {
+                return Err(
+                    "Meta sent the same page cursor twice; the local file was kept".to_string(),
+                );
+            }
+            next = Some(page_after(version, &sync.waba_id, &after));
+        }
     }
 
     if templates.is_empty() {
@@ -124,7 +164,7 @@ pub async fn run(config: &ConfigStore, app_id: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::first_page;
+    use super::{Paging, first_page, page_after};
 
     #[test]
     fn sync_asks_meta_for_the_template_ids() {
@@ -137,5 +177,41 @@ mod tests {
         assert!(url.starts_with("https://graph.facebook.com/v26.0/123/message_templates?"));
         assert!(fields.split(',').any(|field| field == "id"));
         assert!(fields.split(',').any(|field| field == "sub_category"));
+    }
+
+    #[test]
+    fn sync_builds_the_next_page_from_the_cursor_instead_of_meta_s_url() {
+        let paging: Paging = serde_json::from_value(serde_json::json!({
+            "cursors": { "before": "b", "after": "QVFI+x/y=" },
+            "next": "https://graph.facebook.com/v26.0/123/message_templates?access_token=SECRET&after=QVFI"
+        }))
+        .unwrap();
+        let url = page_after("v26.0", "123", &paging.after().unwrap().unwrap());
+
+        assert!(url.starts_with("https://graph.facebook.com/v26.0/123/message_templates?"));
+        assert!(url.ends_with("&after=QVFI%2Bx%2Fy%3D"));
+        assert!(!url.contains("SECRET"));
+    }
+
+    #[test]
+    fn sync_stops_when_meta_sends_no_next_page() {
+        let last: Paging = serde_json::from_value(serde_json::json!({
+            "cursors": { "before": "b", "after": "a" }
+        }))
+        .unwrap();
+
+        assert_eq!(last.after(), Ok(None));
+    }
+
+    #[test]
+    fn sync_refuses_a_next_page_it_cannot_follow_without_meta_s_url() {
+        for paging in [
+            serde_json::json!({ "next": "https://graph.facebook.com/next" }),
+            serde_json::json!({ "next": "https://graph.facebook.com/next", "cursors": { "after": "" } }),
+        ] {
+            let paging: Paging = serde_json::from_value(paging).unwrap();
+
+            assert!(paging.after().is_err());
+        }
     }
 }
