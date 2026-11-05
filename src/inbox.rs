@@ -10,6 +10,7 @@ use tokio::sync::broadcast;
 use crate::clock::Clock;
 use crate::config::{App, ConfigStore, Template};
 use crate::graph_error::GraphError;
+use crate::media;
 use crate::model::{
     Button, Contact, Direction, Media, MediaRef, Message, MessageStatus, Rendered, TemplateRef,
     Webhook, digits,
@@ -67,6 +68,13 @@ const REACTION_TARGET_INVALID: &FailureReason = &FailureReason {
     code: 131_009,
     title: "Parameter value is not valid",
     details: "The message to react to does not exist in this chat, is a reaction or is more than 30 days old.",
+};
+
+/// Meta fails a media send whose uploaded file does not belong to the message type or exceeds its limit.
+const MEDIA_UPLOAD_ERROR: &FailureReason = &FailureReason {
+    code: 131_053,
+    title: "Media upload error",
+    details: "The uploaded media is not a supported type for this message or is larger than its limit.",
 };
 
 const REACTION_WINDOW_MS: i64 = 30 * 24 * 60 * 60 * 1000;
@@ -314,6 +322,8 @@ impl Inbox {
             Some(REENGAGEMENT)
         } else if message.kind == "reaction" && !self.can_react_to(&message)? {
             Some(REACTION_TARGET_INVALID)
+        } else if !self.uploaded_media_fits(app, &message)? {
+            Some(MEDIA_UPLOAD_ERROR)
         } else {
             None
         };
@@ -376,6 +386,29 @@ impl Inbox {
         self.changed_conversation(&app.id, contact);
 
         Ok(())
+    }
+
+    fn uploaded_media_fits(&self, app: &App, message: &Message) -> Result<bool, InboxError> {
+        if !MEDIA_KINDS.contains(&message.kind.as_str()) {
+            return Ok(true);
+        }
+
+        let Some(media_id) = message
+            .payload
+            .get(&message.kind)
+            .and_then(|fields| fields.get("id"))
+            .and_then(Value::as_str)
+        else {
+            return Ok(true);
+        };
+
+        Ok(self.media(media_id, Some(app))?.is_none_or(|media| {
+            media::fits(
+                &message.kind,
+                &media.mime_type,
+                u64::try_from(media.file_size).unwrap_or(u64::MAX),
+            )
+        }))
     }
 
     fn can_react_to(&self, reaction: &Message) -> Result<bool, InboxError> {
@@ -837,6 +870,7 @@ impl Inbox {
         filename: Option<String>,
         data: &[u8],
     ) -> Result<Media, InboxError> {
+        media::check_upload(mime_type, u64::try_from(data.len()).unwrap_or(u64::MAX))?;
         let id = new_media_id();
         let path = self.store.media_dir().join(&id);
 

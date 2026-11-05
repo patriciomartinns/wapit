@@ -1386,6 +1386,63 @@ async fn an_uploaded_media_file_can_be_sent_fetched_and_deleted() {
     );
 }
 
+async fn upload(harness: &Harness, mime: &str, bytes: Vec<u8>) -> (StatusCode, Value) {
+    let form = reqwest::multipart::Form::new()
+        .text("messaging_product", "whatsapp")
+        .text("type", mime.to_owned())
+        .part("file", reqwest::multipart::Part::bytes(bytes));
+    let response = harness
+        .client
+        .post(format!("{}/v26.0/100/media", harness.graph))
+        .bearer_auth("token-a")
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+
+    (status, response.json().await.unwrap())
+}
+
+#[tokio::test]
+async fn uploads_follow_metas_media_types_and_sizes() {
+    let harness = harness().await;
+    let (_, html) = upload(&harness, "text/html", b"<p>".to_vec()).await;
+    let (_, large) = upload(&harness, "image/png", vec![0; 5 * 1024 * 1024 + 1]).await;
+    let (status, document) = upload(&harness, "application/pdf", vec![0; 6 * 1024 * 1024]).await;
+
+    assert_eq!(html["error"]["code"], 100);
+    assert_eq!(large["error"]["code"], 131_053);
+    assert_eq!(status, StatusCode::OK);
+    assert!(document["id"].is_string());
+}
+
+#[tokio::test]
+async fn an_upload_sent_as_the_wrong_kind_fails_with_131053() {
+    let harness = harness().await;
+    harness
+        .ui_post(
+            "/api/conversations/a/15550000000/messages",
+            &json!({ "kind": "text", "text": "Hi" }),
+        )
+        .await;
+    let (_, image) = upload(&harness, "image/webp", vec![0; 1024 * 1024]).await;
+    let before = harness.received_count();
+
+    let (status, sent) = harness
+        .post(
+            "/v26.0/100/messages",
+            &json!({ "messaging_product": "whatsapp", "to": "15550000000", "type": "sticker", "sticker": { "id": image["id"] } }),
+            "token-a",
+        )
+        .await;
+    let failed = value_of(&harness.webhook_after(before).await)["statuses"][0].clone();
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(failed["id"], sent["messages"][0]["id"]);
+    assert_eq!(failed["errors"][0]["code"], 131_053);
+}
+
 #[tokio::test]
 async fn an_upload_for_another_apps_phone_number_is_unsupported() {
     let harness = harness().await;
@@ -1915,7 +1972,7 @@ async fn an_uploaded_file_downloads_as_a_sandboxed_attachment() {
     let harness = harness().await;
     let form = reqwest::multipart::Form::new()
         .text("messaging_product", "whatsapp")
-        .text("type", "text/html")
+        .text("type", "text/plain")
         .part(
             "file",
             reqwest::multipart::Part::bytes(b"<script>alert(1)</script>".to_vec()),

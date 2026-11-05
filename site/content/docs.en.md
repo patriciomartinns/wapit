@@ -103,7 +103,7 @@ An app running in another container must reach wapit by a name that resolves the
 | Endpoint | Behavior |
 | --- | --- |
 | `POST /{phone_number_id}/messages` | Text, template, interactive (reply buttons, list, call to action URL), media, reaction, location, contacts. `status: read`, with an optional typing indicator |
-| `POST /{phone_number_id}/media` | Uploads a file and returns its id |
+| `POST /{phone_number_id}/media` | Uploads a file and returns its id. Only Meta's supported types are accepted, up to 5 MB for images, 16 MB for audio and video, 100 MB for documents and 500 KB for stickers |
 | `GET /{media_id}`, `DELETE /{media_id}` | Media metadata with a download URL, and deletion |
 | `GET /{waba_id}/message_templates` | The local templates, optionally filtered by `name` |
 | `POST /{waba_id}/message_templates` | Creates a template, approved right away |
@@ -129,6 +129,7 @@ Sends are checked like Meta checks them. A rejected send returns Meta's error to
 | `131008` | A parameter is missing its text |
 | `131009` | Button index or type does not match the template |
 | `131047` | Free-form message outside the 24-hour service window |
+| `131053` | An upload is larger than its type allows, or an uploaded file is sent as a message type it does not belong to |
 
 ## Acting as the user
 

@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio_stream::wrappers::BroadcastStream;
 
-use super::{BODY_LIMIT, content_disposition, media_response};
+use super::{UI_BODY_LIMIT, content_disposition, media_response};
 use crate::inbox::{Delivered, InboundMedia, Inbox, InboxError, Problem};
 use crate::model::{Contact, MessageStatus};
 use crate::views::{Change, StateSummary};
@@ -144,7 +144,7 @@ pub fn router(state: UiState) -> Router {
         .nest("/api", api)
         .route("/media/{id}", get(media))
         .fallback(static_asset)
-        .layer(DefaultBodyLimit::max(BODY_LIMIT))
+        .layer(DefaultBodyLimit::max(UI_BODY_LIMIT))
         .with_state(state)
 }
 

@@ -3,6 +3,7 @@ pub mod config;
 pub mod graph_error;
 pub mod http;
 pub mod inbox;
+pub mod media;
 pub mod model;
 pub mod store;
 pub mod sync;

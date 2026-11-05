@@ -86,8 +86,11 @@ pub async fn guard_host(
     }
 }
 
-/// The largest request body either server reads.
-pub const BODY_LIMIT: usize = 32 * 1024 * 1024;
+/// The largest Graph API request body: the biggest media file Meta accepts plus room for the multipart framing.
+pub const BODY_LIMIT: usize = 101 * 1024 * 1024;
+
+/// The inbox sends attachments as base64 inside JSON, which is a third larger than the file.
+pub const UI_BODY_LIMIT: usize = BODY_LIMIT / 3 * 4 + 1024 * 1024;
 
 /// A stored media file, served so it can never run script on the origin that serves it.
 pub fn media_response(bytes: Vec<u8>, content_type: &str, disposition: HeaderValue) -> Response {
