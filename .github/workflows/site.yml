@@ -1,0 +1,37 @@
+name: Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - site/**
+      - Cargo.toml
+      - .github/workflows/site.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy wapit.patriciomartins.com.br
+    runs-on: ubuntu-24.04
+    environment:
+      name: site
+      url: https://wapit.patriciomartins.com.br
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the site scripts
+        run: node --check site/build.mjs && node --check site/public/site.js
+      - uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          wranglerVersion: 4.152.0
+          workingDirectory: site
+          command: deploy

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>wapit · o Mailpit do WhatsApp</title>
+  <meta name="description" content="Uma WhatsApp Cloud API local para desenvolvimento. Cada mensagem que o seu app envia chega numa caixa de entrada com cara de conversa, conferida como a Meta confere.">
+  <link rel="canonical" href="https://wapit.patriciomartins.com.br/pt-br/">
+  <link rel="alternate" hreflang="en" href="https://wapit.patriciomartins.com.br/">
+  <link rel="alternate" hreflang="pt-BR" href="https://wapit.patriciomartins.com.br/pt-br/">
+  <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/site.css">
+  <meta property="og:title" content="wapit · o Mailpit do WhatsApp">
+  <meta property="og:description" content="Uma WhatsApp Cloud API local para desenvolvimento.">
+  <meta property="og:image" content="https://wapit.patriciomartins.com.br/inbox.webp">
+  <meta property="og:url" content="https://wapit.patriciomartins.com.br/pt-br/">
+  <meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+  <a class="skip" href="#main">Pular para o conteúdo</a>
+  <header class="topbar">
+    <a class="brand" href="/pt-br/" aria-label="Início do wapit">
+      <svg width="26" height="26" viewBox="0 0 44 44" aria-hidden="true"><rect x="6" y="10" width="32" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><path d="M6 13l16 10 16-10" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><rect x="26" y="26" width="14" height="10" rx="2" fill="#ffd400"/></svg>
+      wapit
+    </a>
+    <nav class="nav" aria-label="Principal">
+      <a href="/pt-br/docs/">Docs</a>
+      <a class="mono" href="/llms.txt">llms.txt</a>
+      <a href="https://github.com/patriciomartinns/wapit">GitHub</a>
+      <span class="locale" role="group" aria-label="Idioma">
+        <a href="/" hreflang="en" lang="en">EN</a>
+        <a href="/pt-br/" hreflang="pt-BR" lang="pt-BR" aria-current="true">PT-BR</a>
+      </span>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <p class="eyebrow">Uma WhatsApp Cloud API local para desenvolvimento</p>
+      <h1>O Mailpit do WhatsApp.</h1>
+      <p class="lead">Aponte o seu app para o wapit e cada mensagem que ele envia chega numa caixa de entrada com cara de conversa. Cada envio é conferido como a Meta confere, e você responde como o usuário.</p>
+      <div class="actions">
+        <div class="command"><code id="install"><span class="prompt">$ </span>brew install patriciomartinns/tap/wapit</code><button class="copy" type="button" data-copy="install">Copiar</button></div>
+        <a class="button primary" href="/pt-br/docs/">Ler a documentação</a>
+        <a class="button secondary" href="https://github.com/patriciomartinns/wapit">Ver no GitHub</a>
+      </div>
+      <p class="note">Também como <a href="/pt-br/docs/#instalacao">imagem de container</a> e com cargo install. macOS, Linux e Windows.</p>
+    </section>
+
+    <figure class="showcase">
+      <img src="/inbox.webp" width="2496" height="1560" alt="A caixa de entrada do wapit: uma cliente pergunta do pedido, o app responde com um template com botões, a cliente toca numa resposta e cada entrega de webhook aparece embaixo da mensagem">
+    </figure>
+
+    <section class="section desk" aria-labelledby="validation">
+      <div class="intro">
+        <p class="eyebrow">01 · Validação</p>
+        <h2 id="validation">Falha onde a Meta falha.</h2>
+        <p>Os envios de template são conferidos contra o template salvo. Um envio errado recebe de volta o código de erro da Meta e fica na caixa de entrada, marcado, com o motivo em palavras simples.</p>
+      </div>
+      <ul class="codes">
+        <li><code>132000</code><span>A quantidade de parâmetros não bate com o template</span></li>
+        <li><code>132001</code><span>O nome ou o idioma do template não existe</span></li>
+        <li><code>132005</code><span>Texto longo demais depois de preencher as variáveis</span></li>
+        <li><code>132012</code><span>O formato do cabeçalho não bate com o template</span></li>
+        <li><code>132015</code><span>Template pausado, ou desativado (132016)</span></li>
+        <li><code>132018</code><span>Quebras de linha ou muitos espaços seguidos num parâmetro</span></li>
+        <li><code>131009</code><span>O índice ou o tipo do botão não bate</span></li>
+        <li><code>131047</code><span>Mensagem livre fora da janela de 24 horas</span></li>
+      </ul>
+    </section>
+
+    <section class="section stack" aria-labelledby="webhooks">
+      <div class="intro">
+        <p class="eyebrow">02 · Webhooks</p>
+        <h2 id="webhooks">Responda como o usuário.</h2>
+        <p>Cada ação na caixa de entrada chega ao seu app como webhook no formato de payload da Meta, assinado com o seu app secret em <code>X-Hub-Signature-256</code>.</p>
+      </div>
+      <div class="cards">
+        <article class="card"><p class="kind">messages</p><h3>Digite ou anexe</h3><p>Mande texto, imagem ou documento. A primeira mensagem abre a janela de 24 horas.</p></article>
+        <article class="card"><p class="kind">interactive</p><h3>Toque num botão</h3><p>Botões de resposta, respostas rápidas e itens de lista mandam o mesmo payload de um celular de verdade.</p></article>
+        <article class="card"><p class="kind">statuses</p><h3>Marque entregue, lida ou falha</h3><p>Escolha qualquer mensagem do seu app e dispare um status, com falhas usando códigos reais da Meta.</p></article>
+      </div>
+    </section>
+
+    <section class="section ink" aria-labelledby="quick-start">
+      <div class="intro">
+        <p class="eyebrow">03 · Primeiros passos</p>
+        <h2 id="quick-start">Funciona sem configurar nada.</h2>
+        <p>Um binário e um arquivo SQLite local. Rode e ele serve um app padrão. Nunca fala com a Meta, a não ser que você rode <code>wapit sync</code>.</p>
+      </div>
+      <div class="terminal">
+        <div class="bar">terminal</div>
+<pre><span class="prompt">$</span> wapit
+<span class="out">Graph API mock on 127.0.0.1:8027
+Inbox on http://127.0.0.1:8026</span>
+
+<span class="prompt">$</span> curl http://127.0.0.1:8027/v23.0/100000000000001/messages \
+    -H 'Authorization: Bearer wapit-local-token' \
+    -H 'Content-Type: application/json' \
+    -d '{"messaging_product":"whatsapp","to":"15550000000",
+         "type":"text","text":{"body":"Hello"}}'
+<span class="out">{"messaging_product":"whatsapp","contacts":[...],"messages":[{"id":"wamid..."}]}</span></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="about">
+      <a class="brand" href="/pt-br/">
+        <svg width="22" height="22" viewBox="0 0 44 44" aria-hidden="true"><rect x="6" y="10" width="32" height="22" rx="3" fill="none" stroke="currentColor" stroke-width="3"/><path d="M6 13l16 10 16-10" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><rect x="26" y="26" width="14" height="10" rx="2" fill="#ffd400"/></svg>
+        wapit
+      </a>
+      <p><a href="https://github.com/patriciomartinns/wapit/blob/main/LICENSE">Licença MIT</a>. Sem vínculo com a Meta ou com o WhatsApp.</p>
+    </div>
+    <a class="author" href="https://github.com/patriciomartinns">
+      <img src="https://github.com/patriciomartinns.png?size=72" width="36" height="36" alt="">
+      <span><strong>Feito por Patrício Martins</strong><span>@patriciomartinns</span></span>
+    </a>
+  </footer>
+  <script src="/site.js" type="module"></script>
+</body>
+</html>

@@ -7,7 +7,7 @@
 
 <h1 align="center">wapit</h1>
 
-<p align="center">A local WhatsApp Cloud API for development: Mailpit, but for WhatsApp.</p>
+<p align="center">A local WhatsApp Cloud API for development: Mailpit, but for WhatsApp.<br><a href="https://wapit.patriciomartins.com.br">wapit.patriciomartins.com.br</a> · <a href="https://wapit.patriciomartins.com.br/docs/">Docs</a> · <a href="https://wapit.patriciomartins.com.br/llms.txt">llms.txt</a></p>
 
 <p align="center">
   <a href="https://github.com/patriciomartinns/wapit/actions/workflows/ci.yml"><img src="https://github.com/patriciomartinns/wapit/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
