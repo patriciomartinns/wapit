@@ -1493,6 +1493,68 @@ async fn a_template_create_never_overwrites_a_broken_templates_file() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), half_done);
 }
 
+async fn next_change(events: &mut reqwest::Response) -> Value {
+    let mut buffer = String::new();
+
+    loop {
+        let chunk = tokio::time::timeout(Duration::from_secs(3), events.chunk())
+            .await
+            .expect("a change event arrives")
+            .unwrap()
+            .expect("the event stream stays open");
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+        if let Some(line) = buffer.lines().find_map(|line| line.strip_prefix("data:")) {
+            return serde_json::from_str(line.trim()).unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+async fn template_writes_tell_the_inbox_to_refresh() {
+    let harness = harness().await;
+    let mut events = harness
+        .client
+        .get(format!("{}/api/events", harness.ui))
+        .send()
+        .await
+        .unwrap();
+    let (status, created) = harness
+        .post(
+            "/v23.0/200/message_templates",
+            &new_template("announced"),
+            "token-a",
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        next_change(&mut events).await,
+        json!({ "app_id": "a", "contact": null })
+    );
+
+    harness
+        .post(
+            &format!("/v23.0/{}", created["id"].as_str().unwrap()),
+            &json!({ "components": [{ "type": "BODY", "text": "Hello" }] }),
+            "token-a",
+        )
+        .await;
+    assert_eq!(next_change(&mut events).await["app_id"], "a");
+
+    harness
+        .client
+        .delete(format!(
+            "{}/v23.0/200/message_templates?name=announced",
+            harness.graph
+        ))
+        .bearer_auth("token-a")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(next_change(&mut events).await["app_id"], "a");
+}
+
 #[tokio::test]
 async fn concurrent_template_creates_all_land() {
     let harness = Arc::new(harness().await);

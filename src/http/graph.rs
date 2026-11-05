@@ -255,6 +255,7 @@ fn create_template(inbox: &Inbox, app: &App, body: &Bytes) -> Result<Response, I
         all.push(template);
         Ok(response)
     })?;
+    inbox.changed(&app.id, None, json!({}));
 
     Ok(json(StatusCode::OK, response))
 }
@@ -276,6 +277,7 @@ fn edit_template(
                 .ok_or_else(|| GraphError::unsupported("POST", template_id))?;
             templates::edit(template, &input)
         })?;
+    inbox.changed(&app.id, None, json!({}));
 
     Ok(json(StatusCode::OK, json!({ "success": true })))
 }
@@ -308,6 +310,7 @@ fn delete_template(
 
             Ok(())
         })?;
+    inbox.changed(&app.id, None, json!({}));
 
     Ok(json(StatusCode::OK, json!({ "success": true })))
 }
