@@ -16,10 +16,7 @@
   <img src="https://img.shields.io/badge/rust-1.89%2B-orange?logo=rust" alt="Rust 1.89 or newer">
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/inbox-dark.png">
-  <img src="docs/inbox-light.png" alt="The wapit inbox showing a template message with buttons, a reply-button tap and the webhook deliveries to the app">
-</picture>
+<img src="docs/inbox.png" alt="The wapit inbox in light and dark themes, showing a template message with buttons, a reply-button tap and the webhook deliveries to the app">
 
 Point your app's Graph API base URL at wapit and every message it sends shows up in an inbox that looks like a WhatsApp chat. wapit checks each send the way Meta does, answers with Meta's error codes, and lets you reply as the user: type a message, attach a file, tap a button, or mark a message delivered, read or failed. Each action reaches your app as a webhook signed with your app secret.
 
