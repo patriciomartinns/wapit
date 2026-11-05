@@ -117,27 +117,59 @@ impl Store {
         self.db.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub fn insert_message(&self, message: &Message) -> Result<(), StoreError> {
-        self.db().execute(
-            "INSERT INTO messages (id, app_id, contact, direction, type, status, payload, rendered, issues, error, context_id, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            params![
-                message.id,
-                message.app_id,
-                message.contact,
-                message.direction.as_str(),
-                message.kind,
-                message.status,
-                message.payload.to_string(),
-                serde_json::to_string(&message.rendered).unwrap_or_default(),
-                serde_json::to_string(&message.issues).unwrap_or_default(),
-                message.error.as_ref().map(Value::to_string),
-                message.context_id,
-                message.created_at,
-            ],
+    /// Saves a message with its contact and, for inbound media, the media row, in one transaction.
+    /// When it fails the media file already written to disk is removed, so nothing is left half recorded.
+    pub fn record_message(
+        &self,
+        message: &Message,
+        contact_name: Option<&str>,
+        media: Option<&Media>,
+    ) -> Result<(), StoreError> {
+        let result = self.record_message_rows(message, contact_name, media);
+
+        if result.is_err()
+            && let Some(media) = media
+        {
+            remove_files(vec![media.path.clone()]);
+        }
+
+        result
+    }
+
+    fn record_message_rows(
+        &self,
+        message: &Message,
+        contact_name: Option<&str>,
+        media: Option<&Media>,
+    ) -> Result<(), StoreError> {
+        let mut db = self.db();
+        let transaction = db.transaction()?;
+        upsert_contact(
+            &transaction,
+            &message.app_id,
+            &message.contact,
+            contact_name,
         )?;
+        insert_message(&transaction, message)?;
+
+        if let Some(media) = media {
+            insert_media(&transaction, media, Some(&message.id))?;
+        }
+
+        transaction.commit()?;
 
         Ok(())
+    }
+
+    /// Saves a file the app uploaded, removing it from disk when the row cannot be written.
+    pub fn record_upload(&self, media: &Media) -> Result<(), StoreError> {
+        let result = insert_media(&self.db(), media, None);
+
+        if result.is_err() {
+            remove_files(vec![media.path.clone()]);
+        }
+
+        result
     }
 
     pub fn message(&self, id: &str) -> Result<Option<Message>, StoreError> {
@@ -278,21 +310,6 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
-    pub fn upsert_contact(
-        &self,
-        app_id: &str,
-        wa_id: &str,
-        name: Option<&str>,
-    ) -> Result<(), StoreError> {
-        self.db().execute(
-            "INSERT INTO contacts (app_id, wa_id, name) VALUES (?1, ?2, ?3)
-             ON CONFLICT (app_id, wa_id) DO UPDATE SET name = COALESCE(excluded.name, contacts.name)",
-            params![app_id, wa_id, name],
-        )?;
-
-        Ok(())
-    }
-
     pub fn contact_name(&self, app_id: &str, wa_id: &str) -> Result<Option<String>, StoreError> {
         Ok(self
             .db()
@@ -303,26 +320,6 @@ impl Store {
             )
             .optional()?
             .flatten())
-    }
-
-    pub fn insert_media(&self, media: &Media, message_id: Option<&str>) -> Result<(), StoreError> {
-        self.db().execute(
-            "INSERT INTO media (id, app_id, message_id, mime_type, filename, sha256, file_size, path, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![
-                media.id,
-                media.app_id,
-                message_id,
-                media.mime_type,
-                media.filename,
-                media.sha256,
-                media.file_size,
-                media.path,
-                media.created_at
-            ],
-        )?;
-
-        Ok(())
     }
 
     pub fn media(&self, id: &str) -> Result<Option<Media>, StoreError> {
@@ -469,6 +466,68 @@ impl Store {
     }
 }
 
+fn insert_message(db: &Connection, message: &Message) -> Result<(), StoreError> {
+    db.execute(
+        "INSERT INTO messages (id, app_id, contact, direction, type, status, payload, rendered, issues, error, context_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![
+            message.id,
+            message.app_id,
+            message.contact,
+            message.direction.as_str(),
+            message.kind,
+            message.status,
+            message.payload.to_string(),
+            serde_json::to_string(&message.rendered).unwrap_or_default(),
+            serde_json::to_string(&message.issues).unwrap_or_default(),
+            message.error.as_ref().map(Value::to_string),
+            message.context_id,
+            message.created_at,
+        ],
+    )?;
+
+    Ok(())
+}
+
+fn upsert_contact(
+    db: &Connection,
+    app_id: &str,
+    wa_id: &str,
+    name: Option<&str>,
+) -> Result<(), StoreError> {
+    db.execute(
+        "INSERT INTO contacts (app_id, wa_id, name) VALUES (?1, ?2, ?3)
+         ON CONFLICT (app_id, wa_id) DO UPDATE SET name = COALESCE(excluded.name, contacts.name)",
+        params![app_id, wa_id, name],
+    )?;
+
+    Ok(())
+}
+
+fn insert_media(
+    db: &Connection,
+    media: &Media,
+    message_id: Option<&str>,
+) -> Result<(), StoreError> {
+    db.execute(
+        "INSERT INTO media (id, app_id, message_id, mime_type, filename, sha256, file_size, path, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            media.id,
+            media.app_id,
+            message_id,
+            media.mime_type,
+            media.filename,
+            media.sha256,
+            media.file_size,
+            media.path,
+            media.created_at
+        ],
+    )?;
+
+    Ok(())
+}
+
 fn remove_files(paths: Vec<String>) {
     for path in paths {
         if let Err(error) = std::fs::remove_file(&path)
@@ -583,4 +642,81 @@ fn to_webhook(row: &Row<'_>) -> rusqlite::Result<Webhook> {
         duration_ms: row.get("duration_ms")?,
         created_at: row.get("created_at")?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn inbound(id: &str) -> Message {
+        Message {
+            id: id.to_owned(),
+            app_id: "a".into(),
+            contact: "15550000000".into(),
+            direction: Direction::In,
+            kind: "image".into(),
+            status: "received".into(),
+            payload: json!({}),
+            rendered: Rendered::of_kind("image"),
+            issues: Vec::new(),
+            error: None,
+            context_id: None,
+            created_at: 1,
+        }
+    }
+
+    fn media_at(store: &Store, id: &str, file: &str) -> Media {
+        let path = store.media_dir().join(file);
+        std::fs::write(&path, b"png").unwrap();
+
+        Media {
+            id: id.to_owned(),
+            app_id: "a".into(),
+            mime_type: "image/png".into(),
+            filename: None,
+            sha256: "x".into(),
+            file_size: 3,
+            path: path.to_string_lossy().into_owned(),
+            created_at: 1,
+        }
+    }
+
+    #[test]
+    fn a_failed_inbound_media_save_leaves_no_message_and_no_file() {
+        let data = tempfile::TempDir::new().unwrap();
+        let store = Store::open(data.path()).unwrap();
+        let first = media_at(&store, "1", "first");
+        store
+            .record_message(&inbound("wamid.1"), Some("Mary"), Some(&first))
+            .unwrap();
+
+        let clashing = media_at(&store, "1", "second");
+        assert!(
+            store
+                .record_message(&inbound("wamid.2"), None, Some(&clashing))
+                .is_err()
+        );
+
+        assert!(store.message("wamid.2").unwrap().is_none());
+        assert!(!std::path::Path::new(&clashing.path).exists());
+        assert!(store.message("wamid.1").unwrap().is_some());
+        assert_eq!(
+            store.contact_name("a", "15550000000").unwrap().as_deref(),
+            Some("Mary")
+        );
+    }
+
+    #[test]
+    fn a_failed_upload_save_removes_the_file() {
+        let data = tempfile::TempDir::new().unwrap();
+        let store = Store::open(data.path()).unwrap();
+        store
+            .record_upload(&media_at(&store, "1", "first"))
+            .unwrap();
+
+        let clashing = media_at(&store, "1", "second");
+        assert!(store.record_upload(&clashing).is_err());
+        assert!(!std::path::Path::new(&clashing.path).exists());
+    }
 }

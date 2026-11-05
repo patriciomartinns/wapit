@@ -138,6 +138,15 @@ fn new_media_id() -> String {
     format!("{first}{rest}")
 }
 
+async fn write_media_file(path: &std::path::Path, data: &[u8]) -> Result<(), StoreError> {
+    if let Err(error) = tokio::fs::write(path, data).await {
+        let _ = tokio::fs::remove_file(path).await;
+        return Err(error.into());
+    }
+
+    Ok(())
+}
+
 fn failure_reason(code: Option<&str>) -> &'static FailureReason {
     let code = code
         .and_then(|code| code.parse::<i64>().ok())
@@ -260,8 +269,7 @@ impl Inbox {
             created_at: now_ms(),
         };
 
-        self.store.upsert_contact(&app.id, &message.contact, None)?;
-        self.store.insert_message(&message)?;
+        self.store.record_message(&message, None, None)?;
         self.changed(&app.id, Some(&message.contact), json!({}));
         self.schedule_auto_statuses(app, &message.id, outbound.outside_window);
 
@@ -295,24 +303,27 @@ impl Inbox {
         });
         let random: [u8; 12] = rand::rng().random();
 
-        self.store.upsert_contact(&app.id, contact, None)?;
-        self.store.insert_message(&Message {
-            id: format!("rejected.{}", hex::encode(random)),
-            app_id: app.id.clone(),
-            contact: contact.to_owned(),
-            direction: Direction::Out,
-            kind: kind.clone(),
-            status: "rejected".into(),
-            payload,
-            rendered: Rendered {
-                template,
-                ..Rendered::of_kind(kind)
+        self.store.record_message(
+            &Message {
+                id: format!("rejected.{}", hex::encode(random)),
+                app_id: app.id.clone(),
+                contact: contact.to_owned(),
+                direction: Direction::Out,
+                kind: kind.clone(),
+                status: "rejected".into(),
+                payload,
+                rendered: Rendered {
+                    template,
+                    ..Rendered::of_kind(kind)
+                },
+                issues: Vec::new(),
+                error: Some(error.record()),
+                context_id: None,
+                created_at: now_ms(),
             },
-            issues: Vec::new(),
-            error: Some(error.record()),
-            context_id: None,
-            created_at: now_ms(),
-        })?;
+            None,
+            None,
+        )?;
         self.changed(&app.id, Some(contact), json!({}));
 
         Ok(())
@@ -472,7 +483,15 @@ impl Inbox {
     ) -> Result<Delivered, InboxError> {
         let contact_name = match name {
             Some(name) => Some(name.to_owned()),
-            None => self.store.contact_name(&app.id, contact)?,
+            None => match self.store.contact_name(&app.id, contact) {
+                Ok(name) => name,
+                Err(error) => {
+                    if let Some(media) = &media {
+                        let _ = std::fs::remove_file(&media.path);
+                    }
+                    return Err(error.into());
+                }
+            },
         };
         let message = Value::Object(message);
         let row = Message {
@@ -491,15 +510,7 @@ impl Inbox {
         };
 
         self.store
-            .upsert_contact(&app.id, contact, contact_name.as_deref())?;
-        self.store.insert_message(&row)?;
-
-        if let Some(media) = media
-            && let Err(error) = self.store.insert_media(&media, Some(&row.id))
-        {
-            let _ = std::fs::remove_file(&media.path);
-            return Err(error.into());
-        }
+            .record_message(&row, contact_name.as_deref(), media.as_ref())?;
 
         self.changed(&app.id, Some(contact), json!({}));
 
@@ -562,9 +573,7 @@ impl Inbox {
         let path = self.store.media_dir().join(&id);
         let sha256 = base64::engine::general_purpose::STANDARD.encode(Sha256::digest(&media.data));
 
-        tokio::fs::write(&path, &media.data)
-            .await
-            .map_err(StoreError::from)?;
+        write_media_file(&path, &media.data).await?;
 
         let row = Media {
             id: id.clone(),
@@ -698,9 +707,7 @@ impl Inbox {
         let id = new_media_id();
         let path = self.store.media_dir().join(&id);
 
-        tokio::fs::write(&path, data)
-            .await
-            .map_err(StoreError::from)?;
+        write_media_file(&path, data).await?;
 
         let media = Media {
             id,
@@ -712,7 +719,7 @@ impl Inbox {
             path: path.to_string_lossy().into_owned(),
             created_at: now_ms(),
         };
-        self.store.insert_media(&media, None)?;
+        self.store.record_upload(&media)?;
 
         Ok(media)
     }
