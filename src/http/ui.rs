@@ -1,5 +1,5 @@
 use std::convert::Infallible;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
@@ -12,7 +12,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use base64::Engine;
 use futures_util::{Stream, StreamExt, stream};
-use regex::Regex;
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -20,17 +19,12 @@ use tokio_stream::wrappers::BroadcastStream;
 
 use super::content_disposition;
 use crate::inbox::{Delivered, InboundMedia, Inbox, InboxError, Problem};
-use crate::model::{MessageStatus, digits};
+use crate::model::{Contact, MessageStatus};
 use crate::views::{Change, StateSummary};
 
 #[derive(RustEmbed)]
 #[folder = "public/"]
 struct Assets;
-
-static PHONE_LIKE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[\d+\s()-]+$").expect("valid regex"));
-static BSUID: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Z]{2}\.[A-Za-z0-9]+$").expect("valid regex"));
 
 const BODY_LIMIT: usize = 32 * 1024 * 1024;
 const PAGE_POLICY: &str = "default-src 'self'; img-src 'self' data: blob: http: https:; style-src 'self' 'unsafe-inline'; \
@@ -190,11 +184,7 @@ fn ok(value: impl serde::Serialize) -> ApiResult {
 }
 
 fn normalize_contact(contact: &str) -> String {
-    if PHONE_LIKE.is_match(contact) {
-        digits(contact)
-    } else {
-        contact.to_owned()
-    }
+    Contact::parse(contact).id().to_owned()
 }
 
 async fn events(
@@ -307,12 +297,9 @@ async fn send_as_user(
     let body: UserMessage = parse_body(&body)?;
     state.inbox.app_exists(&app)?;
 
-    let contact = normalize_contact(&contact);
-    let phone_shaped = !contact.is_empty() && contact.chars().all(|char| char.is_ascii_digit());
+    let contact = Contact::parse(&contact);
 
-    if (phone_shaped && !(8..=15).contains(&contact.len()))
-        || (!phone_shaped && !BSUID.is_match(&contact))
-    {
+    if !contact.is_valid() {
         return Err(ApiError::new(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_contact",
@@ -320,6 +307,7 @@ async fn send_as_user(
         ));
     }
 
+    let contact = contact.id();
     let kind = present(body.kind).unwrap_or_else(|| "text".into());
     let name = present(body.name);
 
@@ -328,7 +316,7 @@ async fn send_as_user(
         return delivered(
             state
                 .inbox
-                .inbound_text(&app, &contact, name.as_deref(), &text)
+                .inbound_text(&app, contact, name.as_deref(), &text)
                 .await?,
         );
     }
@@ -353,7 +341,7 @@ async fn send_as_user(
     delivered(
         state
             .inbox
-            .inbound_media(&app, &contact, name.as_deref(), media)
+            .inbound_media(&app, contact, name.as_deref(), media)
             .await?,
     )
 }

@@ -1,5 +1,13 @@
+use std::sync::LazyLock;
+
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+static PHONE_LIKE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[\d+\s()-]+$").expect("valid regex"));
+static BSUID: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Z]{2}\.[A-Za-z0-9]+$").expect("valid regex"));
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -284,6 +292,54 @@ pub struct Conversation {
     pub last_id: String,
 }
 
+/// Who a conversation is with: a phone number, kept as its digits, or a business-scoped user id (BSUID)
+/// for users Meta identifies without exposing their number.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Contact {
+    Phone(String),
+    User(String),
+}
+
+impl Contact {
+    /// Reads a contact typed by a person or taken from a URL: anything shaped like a phone number becomes its
+    /// digits, so `+1 (555) 000-0000` and `15550000000` are the same conversation; anything else is a user id.
+    pub fn parse(raw: &str) -> Self {
+        if PHONE_LIKE.is_match(raw) {
+            Self::Phone(digits(raw))
+        } else {
+            Self::User(raw.trim().to_owned())
+        }
+    }
+
+    /// The recipient of a send: `to` is a phone number, and without it `recipient` is a user id.
+    /// Returns the contact with the text the app sent, which Meta echoes back as `input`.
+    pub fn recipient_of(payload: &Value) -> Option<(Self, &str)> {
+        let to = payload.get("to").and_then(Value::as_str);
+        let input = to
+            .or_else(|| payload.get("recipient").and_then(Value::as_str))
+            .filter(|input| !input.trim().is_empty())?;
+
+        Some(match to {
+            Some(to) => (Self::Phone(digits(to)), input),
+            None => (Self::User(input.trim().to_owned()), input),
+        })
+    }
+
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Phone(id) | Self::User(id) => id,
+        }
+    }
+
+    /// Phone numbers need 8 to 15 digits with the country code; user ids look like `BR.1349120865`.
+    pub fn is_valid(&self) -> bool {
+        match self {
+            Self::Phone(number) => (8..=15).contains(&number.len()),
+            Self::User(id) => BSUID.is_match(id),
+        }
+    }
+}
+
 pub fn now_ms() -> i64 {
     let elapsed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -298,7 +354,36 @@ pub fn digits(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::MessageStatus;
+    use super::{Contact, MessageStatus};
+    use serde_json::json;
+
+    #[test]
+    fn contacts_read_phone_numbers_as_digits_and_anything_else_as_user_ids() {
+        assert_eq!(
+            Contact::parse("+1 (555) 000-0000"),
+            Contact::Phone("15550000000".into())
+        );
+        assert_eq!(
+            Contact::parse("BR.abc123"),
+            Contact::User("BR.abc123".into())
+        );
+        assert!(Contact::parse("BR.abc123").is_valid());
+        assert!(!Contact::parse("1234").is_valid());
+        assert!(!Contact::parse("not a user").is_valid());
+    }
+
+    #[test]
+    fn a_send_names_its_recipient_by_to_or_by_recipient() {
+        assert_eq!(
+            Contact::recipient_of(&json!({ "to": "+55 85 9999-0000", "recipient": "BR.x" })),
+            Some((Contact::Phone("558599990000".into()), "+55 85 9999-0000"))
+        );
+        assert_eq!(
+            Contact::recipient_of(&json!({ "recipient": " BR.x " })),
+            Some((Contact::User("BR.x".into()), " BR.x "))
+        );
+        assert_eq!(Contact::recipient_of(&json!({ "to": " " })), None);
+    }
 
     #[test]
     fn statuses_round_trip_and_unknown_ones_survive() {

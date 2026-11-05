@@ -10,8 +10,8 @@ use tokio::sync::broadcast;
 use crate::config::{App, ConfigStore, Template};
 use crate::graph_error::GraphError;
 use crate::model::{
-    Button, Direction, Media, MediaRef, Message, MessageStatus, Rendered, TemplateRef, Webhook,
-    digits, now_ms,
+    Button, Contact, Direction, Media, MediaRef, Message, MessageStatus, Rendered, TemplateRef,
+    Webhook, digits, now_ms,
 };
 use crate::store::{Store, StoreError};
 use crate::templates;
@@ -244,15 +244,9 @@ impl Inbox {
         app: &Arc<App>,
         payload: Value,
     ) -> Result<(Message, String), InboxError> {
-        let contact_hint = match payload.get("to").and_then(Value::as_str) {
-            Some(to) => digits(to),
-            None => payload
-                .get("recipient")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .trim()
-                .to_owned(),
-        };
+        let contact_hint = Contact::recipient_of(&payload)
+            .map(|(contact, _)| contact.id().to_owned())
+            .unwrap_or_default();
         let last_inbound_at = if contact_hint.is_empty() {
             None
         } else {

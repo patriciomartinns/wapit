@@ -6,7 +6,7 @@ use serde_json::{Map, Value};
 
 use crate::config::{Template, TemplateButton};
 use crate::graph_error::GraphError;
-use crate::model::{BodyPart, Button, Issue, MediaRef, Rendered, TemplateRef, digits};
+use crate::model::{BodyPart, Button, Contact, Issue, MediaRef, Rendered, TemplateRef};
 
 /// Meta treats a send without `type` as a text message.
 pub const DEFAULT_MESSAGE_TYPE: &str = "text";
@@ -732,6 +732,7 @@ pub fn validate_outbound(
     payload: &Value,
     context: &OutboundContext<'_>,
 ) -> Result<Outbound, GraphError> {
+    let recipient = Contact::recipient_of(payload);
     let empty = Json::new();
     let payload = payload.as_object().unwrap_or(&empty);
 
@@ -739,21 +740,11 @@ pub fn validate_outbound(
         return Err(GraphError::required("messaging_product"));
     }
 
-    let to = string(payload.get("to"));
-    let input = to
-        .or_else(|| string(payload.get("recipient")))
-        .filter(|input| !input.trim().is_empty())
-        .ok_or_else(|| GraphError::required("to"))?;
-    let contact = match to {
-        Some(to) => digits(to),
-        None => input.trim().to_owned(),
-    };
+    let (contact, input) = recipient.ok_or_else(|| GraphError::required("to"))?;
 
-    if let Some(to) = to
-        && !(8..=15).contains(&contact.len())
-    {
+    if matches!(contact, Contact::Phone(_)) && !contact.is_valid() {
         return Err(GraphError::new(100, "(#100) Invalid parameter")
-            .details(format!("to: {to} is not a valid WhatsApp phone number")));
+            .details(format!("to: {input} is not a valid WhatsApp phone number")));
     }
 
     let kind = string(payload.get("type")).unwrap_or(DEFAULT_MESSAGE_TYPE);
@@ -822,7 +813,7 @@ pub fn validate_outbound(
 
     Ok(Outbound {
         kind: kind.to_owned(),
-        contact,
+        contact: contact.id().to_owned(),
         input: input.to_owned(),
         rendered,
         issues,
