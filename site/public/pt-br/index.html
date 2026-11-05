@@ -99,6 +99,8 @@
     "changes": [{
       "field": "messages",
       "value": {
+        "messaging_product": "whatsapp",
+        "metadata": { "phone_number_id": "100000000000002", … },
         "contacts": [{ "wa_id": "15550001234",
           "profile": { "name": "Mary Smith" } }],
         "messages": [{
@@ -123,19 +125,19 @@
         <p>Os envios de template são conferidos contra o template salvo. Um envio errado recebe o erro da Meta e fica na caixa de entrada, marcado, com o motivo em palavras simples.</p>
       </div>
       <div class="pair">
-        <ul class="codes" aria-label="Códigos de erro que o wapit confere">
-          <li class="current"><code>132000</code><span>A quantidade de parâmetros não bate com o template</span></li>
-          <li><code>132001</code><span>O nome ou o idioma do template não existe</span></li>
-          <li><code>132005</code><span>Texto longo demais depois de preencher as variáveis</span></li>
-          <li><code>132012</code><span>O formato do cabeçalho não bate com o template</span></li>
-          <li><code>132015</code><span>Template pausado, ou desativado (132016)</span></li>
-          <li><code>132018</code><span>Quebras de linha ou muitos espaços seguidos num parâmetro</span></li>
-          <li><code>131009</code><span>O índice ou o tipo do botão não bate</span></li>
-          <li><code>131047</code><span>Mensagem livre fora da janela de 24 horas</span></li>
+        <ul class="codes" role="tablist" aria-orientation="vertical" aria-label="Códigos de erro que o wapit confere">
+          <li role="presentation"><button type="button" role="tab" id="tab-132000" data-code="132000" aria-selected="true" aria-controls="error-panel" tabindex="0"><code>132000</code><span>A quantidade de parâmetros não bate com o template</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="tab-132001" data-code="132001" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132001</code><span>O nome ou o idioma do template não existe</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="tab-132005" data-code="132005" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132005</code><span>Texto longo demais depois de preencher as variáveis</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="tab-132012" data-code="132012" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132012</code><span>O formato do cabeçalho não bate com o template</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="tab-132015" data-code="132015" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132015</code><span>Template pausado, ou desativado (132016)</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="tab-132018" data-code="132018" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132018</code><span>Quebras de linha ou muitos espaços seguidos num parâmetro</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="tab-131009" data-code="131009" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>131009</code><span>O índice ou o tipo do botão não bate</span></button></li>
+          <li role="presentation"><button type="button" role="tab" id="tab-131047" data-code="131047" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>131047</code><span>Mensagem livre fora da janela de 24 horas</span></button></li>
         </ul>
-        <figure class="code-panel">
-          <figcaption><span>POST /v23.0/100000000000002/messages</span><span class="fail">400</span><span class="sr">Resposta a um envio com a quantidade errada de parâmetros</span></figcaption>
-<pre>{
+        <figure class="code-panel" id="error-panel" role="tabpanel" aria-labelledby="tab-132000">
+          <figcaption><span data-error-caption>POST /v23.0/100000000000002/messages</span><span class="fail" data-error-status>400</span><span class="sr">Resposta a um envio com a quantidade errada de parâmetros</span></figcaption>
+<pre data-error-body>{
   "error": {
     "message": "(#132000) Number of parameters does not
       match the expected number of params",

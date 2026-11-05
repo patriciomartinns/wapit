@@ -1,4 +1,41 @@
-const themeButtons = document.querySelectorAll('[data-theme-choice]');
+const tabs = [...document.querySelectorAll('.codes [role="tab"]')];
+
+if (tabs.length > 0) {
+  const panel = document.getElementById('error-panel');
+  const caption = panel.querySelector('[data-error-caption]');
+  const status = panel.querySelector('[data-error-status]');
+  const body = panel.querySelector('[data-error-body]');
+  const escape = (text) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+  const select = async (tab, focus) => {
+    const { errors } = await import('/errors.js');
+    const error = errors[tab.dataset.code];
+    if (!error) return;
+    for (const other of tabs) {
+      const selected = other === tab;
+      other.setAttribute('aria-selected', String(selected));
+      other.tabIndex = selected ? 0 : -1;
+    }
+    panel.setAttribute('aria-labelledby', tab.id);
+    caption.textContent = error.caption;
+    status.textContent = error.status;
+    body.innerHTML = escape(JSON.stringify(error.body, null, 2)).replace(/^(\s*)("code": \d+,?)$/m, '$1<mark>$2</mark>');
+    if (focus) tab.focus();
+  };
+
+  for (const tab of tabs) {
+    tab.addEventListener('click', () => select(tab, false));
+    tab.addEventListener('keydown', (event) => {
+      const index = tabs.indexOf(tab);
+      const next = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: tabs.length - 1 }[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      select(tabs[(next + tabs.length) % tabs.length], true);
+    });
+  }
+}
+
+const themeButtons =document.querySelectorAll('[data-theme-choice]');
 
 function showTheme() {
   const current = document.documentElement.dataset.theme ?? 'system';

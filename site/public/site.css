@@ -370,7 +370,7 @@ code, pre, kbd { font-family: var(--font-mono); }
 .code-panel figcaption { display: flex; justify-content: space-between; gap: var(--spacing-4); padding: var(--spacing-3) var(--spacing-5); border-bottom: 1px solid var(--night-700); font-family: var(--font-mono); font-size: 13px; color: var(--night-400); }
 .code-panel .ok { color: var(--chrome-400); }
 .code-panel .fail { color: var(--color-fail); }
-.code-panel pre { padding: var(--spacing-5); overflow-x: auto; font-size: 13px; line-height: 1.6; }
+.code-panel pre { padding: var(--spacing-5); overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.6; }
 .code-panel .out { color: var(--night-400); }
 .code-panel mark { background: none; color: var(--chrome-400); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -386,9 +386,26 @@ code, pre, kbd { font-family: var(--font-mono); }
   background: var(--color-slip);
   box-shadow: 0 0 0 1px var(--color-line);
 }
-.codes li { display: flex; gap: var(--spacing-5); padding: var(--spacing-3) var(--spacing-5); border-top: 1px solid var(--color-line); font-size: 14px; }
+.codes li { border-top: 1px solid var(--color-line); }
 .codes li:first-child { border-top: 0; }
-.codes li.current { background: var(--color-user-slip); }
+.codes button {
+  appearance: none;
+  border: 0;
+  display: flex;
+  gap: var(--spacing-5);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--spacing-3) var(--spacing-5);
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.codes button:hover { background: var(--color-desk); }
+.codes button[aria-selected="true"] { background: var(--color-user-slip); }
+.codes button:focus-visible { outline-offset: -2px; border-radius: 0; }
 .codes code { width: 64px; flex-shrink: 0; font-weight: 600; }
 
 .terminal {
@@ -498,7 +515,7 @@ code, pre, kbd { font-family: var(--font-mono); }
   .section { padding-block: var(--spacing-16); }
   .intro h2, .content h1 { font-size: 28px; }
   .inbox-panel { padding: var(--spacing-5); }
-  .codes li { flex-direction: column; gap: var(--spacing-1); }
+  .codes button { flex-direction: column; gap: var(--spacing-1); }
   .showcase .frame { border-radius: 10px; }
   .docs { padding-top: var(--spacing-10); }
 }
@@ -513,7 +530,7 @@ code, pre, kbd { font-family: var(--font-mono); }
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
 
-  .button, .md-button, .copy, .locale a, .toc a, .nav a, .theme button {
+  .button, .md-button, .copy, .locale a, .toc a, .nav a, .theme button, .codes button {
     transition-property: background-color, color, box-shadow, transform, opacity;
     transition-duration: 160ms;
     transition-timing-function: var(--ease-out);
