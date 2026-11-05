@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use crate::clock::Clock;
 use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
 use serde_json::Value;
 
 use crate::model::{
     Conversation, Direction, Issue, Media, Message, MessageStatus, Rendered, StatusEvent, Webhook,
-    now_ms,
 };
 
 const MIGRATIONS: &[&str] = &[r"
@@ -70,6 +70,7 @@ const MIGRATIONS: &[&str] = &[r"
 pub struct Store {
     db: Mutex<Connection>,
     media_dir: PathBuf,
+    clock: Arc<dyn Clock>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -81,7 +82,7 @@ pub enum StoreError {
 }
 
 impl Store {
-    pub fn open(data_dir: &Path) -> Result<Self, StoreError> {
+    pub fn open(data_dir: &Path, clock: Arc<dyn Clock>) -> Result<Self, StoreError> {
         std::fs::create_dir_all(data_dir)?;
         let data_dir = std::fs::canonicalize(data_dir)?;
         let media_dir = data_dir.join("media");
@@ -95,6 +96,7 @@ impl Store {
         Ok(Self {
             db: Mutex::new(db),
             media_dir,
+            clock,
         })
     }
 
@@ -274,7 +276,7 @@ impl Store {
         )?;
         db.execute(
             "INSERT INTO statuses (message_id, status, error, created_at) VALUES (?1, ?2, NULL, ?3)",
-            params![id, status.as_str(), now_ms()],
+            params![id, status.as_str(), self.clock.now_ms()],
         )?;
 
         Ok(())
@@ -679,7 +681,7 @@ mod tests {
     #[test]
     fn a_failed_inbound_media_save_leaves_no_message_and_no_file() {
         let data = tempfile::TempDir::new().unwrap();
-        let store = Store::open(data.path()).unwrap();
+        let store = Store::open(data.path(), Arc::new(crate::clock::SystemClock)).unwrap();
         let first = media_at(&store, "1", "first");
         store
             .record_message(&inbound("wamid.1"), Some("Mary"), Some(&first))
@@ -704,7 +706,7 @@ mod tests {
     #[test]
     fn a_failed_upload_save_removes_the_file() {
         let data = tempfile::TempDir::new().unwrap();
-        let store = Store::open(data.path()).unwrap();
+        let store = Store::open(data.path(), Arc::new(crate::clock::SystemClock)).unwrap();
         store
             .record_upload(&media_at(&store, "1", "first"))
             .unwrap();

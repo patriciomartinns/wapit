@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use wapit::clock::{Clock, SystemClock, TestClock};
 use wapit::{Settings, build};
 
 #[derive(Clone)]
@@ -23,6 +24,7 @@ struct Harness {
     ui: String,
     received: Arc<Mutex<Vec<Received>>>,
     client: reqwest::Client,
+    clock: Arc<TestClock>,
     config: TempDir,
     _data: TempDir,
 }
@@ -116,6 +118,7 @@ async fn harness() -> Harness {
     .unwrap();
 
     let data = TempDir::new().unwrap();
+    let clock = Arc::new(TestClock::default());
     let graph_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let graph_url = format!("http://{}", graph_listener.local_addr().unwrap());
     let servers = build(&Settings {
@@ -127,6 +130,7 @@ async fn harness() -> Harness {
         extra_ca_file: None,
         allowed_hosts: Vec::new(),
         auto_status_delay: Duration::from_millis(10),
+        clock: Arc::clone(&clock) as Arc<dyn Clock>,
     })
     .unwrap();
 
@@ -142,6 +146,7 @@ async fn harness() -> Harness {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .unwrap(),
+        clock,
         config,
         _data: data,
     }
@@ -766,6 +771,46 @@ async fn free_form_outside_the_service_window_gets_a_failed_131047_status() {
 }
 
 #[tokio::test]
+async fn the_service_window_closes_24_hours_after_the_last_user_message() {
+    let harness = harness().await;
+    let inbound: Value = harness
+        .ui_post(
+            "/api/conversations/a/15550000011/messages",
+            &json!({ "kind": "text", "text": "Hi" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let text = json!({ "messaging_product": "whatsapp", "to": "15550000011", "type": "text", "text": { "body": "Hello" } });
+
+    let conversation = harness.ui_get("/api/conversations/a/15550000011").await;
+    assert_eq!(
+        conversation["window_open_until"],
+        inbound["message"]["created_at"].as_i64().unwrap() + 24 * 60 * 60 * 1000
+    );
+
+    harness.clock.advance(Duration::from_secs(23 * 60 * 60));
+    harness.post("/v26.0/100/messages", &text, "token-a").await;
+    harness.clock.advance(Duration::from_secs(60 * 60 + 1));
+    let before = harness.received_count();
+    let late = harness
+        .post("/v26.0/100/messages", &text, "token-a")
+        .await
+        .1;
+    let status = value_of(&harness.webhook_after(before).await)["statuses"][0].clone();
+
+    let messages = harness.ui_get("/api/conversations/a/15550000011").await["messages"].clone();
+    assert_eq!(messages[1]["issues"], json!([]));
+    assert_eq!(
+        messages[2]["issues"],
+        json!([{ "code": "outside_service_window" }])
+    );
+    assert_eq!(status["id"], late["messages"][0]["id"]);
+    assert_eq!(status["errors"][0]["code"], 131_047);
+}
+
+#[tokio::test]
 async fn a_bsuid_conversation_opens_by_its_raw_id() {
     let harness = harness().await;
     let payload = json!({
@@ -1339,6 +1384,7 @@ async fn without_apps_json_a_default_app_answers() {
         extra_ca_file: None,
         allowed_hosts: Vec::new(),
         auto_status_delay: Duration::from_millis(10),
+        clock: Arc::new(SystemClock),
     })
     .unwrap();
     let graph = serve(servers.graph).await;
@@ -1394,6 +1440,7 @@ async fn the_shipped_example_config_accepts_its_example_template() {
         extra_ca_file: None,
         allowed_hosts: Vec::new(),
         auto_status_delay: Duration::from_secs(60),
+        clock: Arc::new(SystemClock),
     })
     .unwrap();
     let graph = serve(servers.graph).await;
@@ -1822,6 +1869,7 @@ async fn a_database_from_the_node_release_is_adopted() {
         extra_ca_file: None,
         allowed_hosts: Vec::new(),
         auto_status_delay: Duration::from_secs(60),
+        clock: Arc::new(SystemClock),
     })
     .unwrap();
     let ui = serve(servers.ui).await;

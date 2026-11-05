@@ -1,3 +1,4 @@
+pub mod clock;
 pub mod config;
 pub mod graph_error;
 pub mod http;
@@ -16,6 +17,7 @@ use std::time::Duration;
 
 use axum::Router;
 
+use crate::clock::Clock;
 use crate::config::ConfigStore;
 use crate::http::{AllowedHosts, graph, guard_host, host_of, ui};
 use crate::inbox::Inbox;
@@ -31,6 +33,7 @@ pub struct Settings {
     pub extra_ca_file: Option<String>,
     pub allowed_hosts: Vec<String>,
     pub auto_status_delay: Duration,
+    pub clock: Arc<dyn Clock>,
 }
 
 pub struct Servers {
@@ -55,9 +58,13 @@ pub fn install_crypto_provider() {
 pub fn build(settings: &Settings) -> Result<Servers, StartError> {
     install_crypto_provider();
 
-    let store = Arc::new(Store::open(&settings.data_dir)?);
+    let store = Arc::new(Store::open(
+        &settings.data_dir,
+        Arc::clone(&settings.clock),
+    )?);
     let webhooks = WebhookSender::new(
         Arc::clone(&store),
+        Arc::clone(&settings.clock),
         settings.loopback_host.as_deref(),
         settings.extra_ca_file.as_deref(),
     )?;
@@ -66,6 +73,7 @@ pub fn build(settings: &Settings) -> Result<Servers, StartError> {
         store,
         webhooks,
         settings.auto_status_delay,
+        Arc::clone(&settings.clock),
     ));
 
     let hosts = AllowedHosts::new(

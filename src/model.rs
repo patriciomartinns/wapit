@@ -340,14 +340,6 @@ impl Contact {
     }
 }
 
-pub fn now_ms() -> i64 {
-    let elapsed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-
-    i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX)
-}
-
 pub fn digits(value: &str) -> String {
     value.chars().filter(char::is_ascii_digit).collect()
 }

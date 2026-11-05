@@ -7,11 +7,12 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 
+use crate::clock::Clock;
 use crate::config::{App, ConfigStore, Template};
 use crate::graph_error::GraphError;
 use crate::model::{
     Button, Contact, Direction, Media, MediaRef, Message, MessageStatus, Rendered, TemplateRef,
-    Webhook, digits, now_ms,
+    Webhook, digits,
 };
 use crate::store::{Store, StoreError};
 use crate::templates;
@@ -125,6 +126,7 @@ pub struct Inbox {
     events: broadcast::Sender<Change>,
     stopping: tokio::sync::watch::Sender<bool>,
     auto_status_delay: Duration,
+    clock: Arc<dyn Clock>,
 }
 
 pub fn new_message_id() -> String {
@@ -181,6 +183,7 @@ impl Inbox {
         store: Arc<Store>,
         webhooks: WebhookSender,
         auto_status_delay: Duration,
+        clock: Arc<dyn Clock>,
     ) -> Self {
         let (events, _) = broadcast::channel(256);
         let (stopping, _) = tokio::sync::watch::channel(false);
@@ -192,6 +195,7 @@ impl Inbox {
             events,
             stopping,
             auto_status_delay,
+            clock,
         }
     }
 
@@ -256,7 +260,7 @@ impl Inbox {
         let context = OutboundContext {
             templates: &templates,
             last_inbound_at,
-            now: now_ms(),
+            now: self.clock.now_ms(),
         };
 
         let outbound = match validate_outbound(&payload, &context) {
@@ -282,7 +286,7 @@ impl Inbox {
             issues: outbound.issues,
             error: None,
             context_id: outbound.context_id,
-            created_at: now_ms(),
+            created_at: self.clock.now_ms(),
         };
 
         self.store.record_message(&message, None, None)?;
@@ -335,7 +339,7 @@ impl Inbox {
                 issues: Vec::new(),
                 error: Some(error.record()),
                 context_id: None,
-                created_at: now_ms(),
+                created_at: self.clock.now_ms(),
             },
             None,
             None,
@@ -412,7 +416,7 @@ impl Inbox {
                 "href": "https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes/",
             })
         });
-        let at = now_ms();
+        let at = self.clock.now_ms();
 
         if !self
             .store
@@ -492,11 +496,14 @@ impl Inbox {
         Ok(())
     }
 
-    fn base_inbound(contact: &str, kind: &str) -> serde_json::Map<String, Value> {
+    fn base_inbound(&self, contact: &str, kind: &str) -> serde_json::Map<String, Value> {
         let mut message = serde_json::Map::new();
         message.insert("from".into(), json!(contact));
         message.insert("id".into(), json!(new_message_id()));
-        message.insert("timestamp".into(), json!((now_ms() / 1000).to_string()));
+        message.insert(
+            "timestamp".into(),
+            json!((self.clock.now_ms() / 1000).to_string()),
+        );
         message.insert("type".into(), json!(kind));
         message
     }
@@ -537,7 +544,7 @@ impl Inbox {
             issues: Vec::new(),
             error: None,
             context_id,
-            created_at: now_ms(),
+            created_at: self.clock.now_ms(),
         };
 
         self.store
@@ -571,7 +578,7 @@ impl Inbox {
         text: &str,
     ) -> Result<Delivered, InboxError> {
         let app = self.require_app(app_id)?;
-        let mut message = Self::base_inbound(contact, "text");
+        let mut message = self.base_inbound(contact, "text");
         message.insert("text".into(), json!({ "body": text }));
         let rendered = Rendered {
             body: Some(text.to_owned()),
@@ -614,7 +621,7 @@ impl Inbox {
             sha256: sha256.clone(),
             file_size: i64::try_from(media.data.len()).unwrap_or(i64::MAX),
             path: path.to_string_lossy().into_owned(),
-            created_at: now_ms(),
+            created_at: self.clock.now_ms(),
         };
 
         let mut object = serde_json::Map::new();
@@ -638,7 +645,7 @@ impl Inbox {
             object.insert("voice".into(), json!(false));
         }
 
-        let mut message = Self::base_inbound(contact, &media.kind);
+        let mut message = self.base_inbound(contact, &media.kind);
         message.insert(media.kind.clone(), Value::Object(object));
         let rendered = Rendered {
             caption: media
@@ -690,7 +697,7 @@ impl Inbox {
             "context".into(),
             json!({ "from": digits(&app.display_phone_number), "id": original.id }),
         );
-        message.extend(Self::base_inbound(
+        message.extend(self.base_inbound(
             &original.contact,
             if quick_reply { "button" } else { "interactive" },
         ));
@@ -748,7 +755,7 @@ impl Inbox {
             sha256: base64::engine::general_purpose::STANDARD.encode(Sha256::digest(data)),
             file_size: i64::try_from(data.len()).unwrap_or(i64::MAX),
             path: path.to_string_lossy().into_owned(),
-            created_at: now_ms(),
+            created_at: self.clock.now_ms(),
         };
         self.store.record_upload(&media)?;
 

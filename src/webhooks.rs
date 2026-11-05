@@ -7,8 +7,9 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use serde_json::{Value, json};
 use sha2::Sha256;
 
+use crate::clock::Clock;
 use crate::config::App;
-use crate::model::{MessageStatus, Webhook, digits, now_ms};
+use crate::model::{MessageStatus, Webhook, digits};
 use crate::store::{Store, StoreError};
 
 const TIMEOUT: Duration = Duration::from_secs(20);
@@ -154,6 +155,7 @@ pub enum ClientError {
 pub struct WebhookSender {
     client: reqwest::Client,
     store: Arc<Store>,
+    clock: Arc<dyn Clock>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -176,6 +178,7 @@ pub struct Delivery {
 impl WebhookSender {
     pub fn new(
         store: Arc<Store>,
+        clock: Arc<dyn Clock>,
         loopback_host: Option<&str>,
         extra_ca_file: Option<&str>,
     ) -> Result<Self, ClientError> {
@@ -206,6 +209,7 @@ impl WebhookSender {
         Ok(Self {
             client: builder.build()?,
             store,
+            clock,
         })
     }
 
@@ -292,7 +296,7 @@ impl WebhookSender {
             response: delivery.response,
             error: delivery.error,
             duration_ms: delivery.duration_ms,
-            created_at: now_ms(),
+            created_at: self.clock.now_ms(),
         };
         webhook.id = self.store.insert_webhook(&webhook)?;
 

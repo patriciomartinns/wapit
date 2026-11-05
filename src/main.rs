@@ -122,6 +122,7 @@ async fn serve_forever(config_dir: PathBuf, serve: Serve) -> Result<(), String> 
         }),
         allowed_hosts: serve.allowed_hosts,
         auto_status_delay: Duration::from_millis(1500),
+        clock: std::sync::Arc::new(wapit::clock::SystemClock),
     };
     let servers = build(&settings).map_err(|error| error.to_string())?;
 
