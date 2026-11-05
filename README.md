@@ -64,13 +64,13 @@ Run `wapit` with no configuration and it serves one default app:
 Set the same values in your app, with `http://127.0.0.1:8027` as the Graph API base URL, and send a message:
 
 ```bash
-curl http://127.0.0.1:8027/v23.0/100000000000001/messages \
+curl http://127.0.0.1:8027/v26.0/100000000000001/messages \
   -H 'Authorization: Bearer wapit-local-token' \
   -H 'Content-Type: application/json' \
   -d '{"messaging_product":"whatsapp","to":"15550000000","type":"text","text":{"body":"Hello"}}'
 ```
 
-Open http://127.0.0.1:8026 to see it. A free-form message to someone who never wrote to you is accepted and then fails with error 131047, exactly as Meta does outside the 24-hour service window. Reply as the user from the inbox to open the window.
+Open http://127.0.0.1:8026 to see it. wapit accepts any version in the path, or none. The examples use v26.0, the latest stable Graph API version, and webhooks have the v24.0 and later shape, without the `conversation` object in statuses. A free-form message to someone who never wrote to you is accepted and then fails with error 131047, exactly as Meta does outside the 24-hour service window. Reply as the user from the inbox to open the window.
 
 ## Configuration
 
@@ -96,7 +96,7 @@ Templates live in `config/templates/<app id>.json`, in the format Meta's `messag
 WAPIT_SYNC_TOKEN=... wapit sync <app id>
 ```
 
-This is the only command that talks to Meta, and only when you run it.
+It reads Graph API v26.0 unless the app's `sync.graph_version` says otherwise. This is the only command that talks to Meta, and only when you run it.
 
 ### Environment
 
@@ -139,7 +139,7 @@ An app running in another container must reach wapit by a name that resolves the
 
 A reaction gets only the `sent` status, as on Meta, and a reaction to a message that is not in the chat, is itself a reaction or is more than 30 days old is accepted and then fails with error 131009.
 
-Template sends are checked against the stored template like Meta does: name and language (132001), paused or disabled templates (132015, 132016), parameter counts in the header, body and URL buttons (132000), line breaks or long runs of spaces in body parameters (132018), text too long after substitution (132005), header format (132012) and button index and type (131009). A rejected send returns Meta's error to your app and stays in the inbox, flagged, with the reason in plain words.
+Template sends are checked against the stored template like Meta does: name and language (132001), paused or disabled templates (132015, 132016), parameter counts in the header, body and URL buttons (132000), line breaks or long runs of spaces in body parameters (132018), text too long after substitution (132005), header format (132012), and values that break Meta's rules, such as a field over its limit, duplicate button ids or titles, or a wrong button index or type (131009). A rejected send returns Meta's error to your app and stays in the inbox, flagged, with the reason in plain words.
 
 ## Business-scoped user IDs
 

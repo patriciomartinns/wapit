@@ -43,13 +43,15 @@ Rode `wapit` sem configuração nenhuma e ele serve um app padrão. A caixa de e
 Use os mesmos valores no seu app, com `http://127.0.0.1:8027` como URL base da Graph API, e mande uma mensagem:
 
 ```bash
-curl http://127.0.0.1:8027/v23.0/100000000000001/messages \
+curl http://127.0.0.1:8027/v26.0/100000000000001/messages \
   -H 'Authorization: Bearer wapit-local-token' \
   -H 'Content-Type: application/json' \
   -d '{"messaging_product":"whatsapp","to":"15550000000","type":"text","text":{"body":"Hello"}}'
 ```
 
 Uma mensagem livre para quem nunca falou com você é aceita e depois falha com o erro 131047, igual à Meta fora da janela de atendimento de 24 horas. Responda como o usuário pela caixa de entrada para abrir a janela.
+
+O wapit aceita qualquer versão no caminho, ou nenhuma. Os exemplos usam a v26.0, a versão estável mais recente da Graph API, e os webhooks têm o formato da v24.0 em diante, sem o objeto `conversation` nos status.
 
 ## Configure seus apps
 
@@ -79,7 +81,7 @@ Copie os templates da sua conta real, só para leitura, com:
 WAPIT_SYNC_TOKEN=... wapit sync <id do app>
 ```
 
-É o único comando que fala com a Meta, e só quando você roda.
+Ele lê a Graph API v26.0, a menos que `sync.graph_version` do app diga outra versão. É o único comando que fala com a Meta, e só quando você roda.
 
 ## Variáveis de ambiente
 
@@ -131,7 +133,7 @@ Os envios são conferidos como a Meta confere. Um envio rejeitado devolve o erro
 | `132016` | O template está desativado |
 | `132018` | Quebra de linha, tab ou mais de 4 espaços seguidos num parâmetro do corpo |
 | `131008` | Falta o texto de um parâmetro |
-| `131009` | O índice ou o tipo do botão não bate com o template |
+| `131009` | Um valor fere as regras da Meta: um campo maior que o limite, ids ou títulos de botão repetidos, ou um índice ou tipo de botão que não bate com o template |
 | `131047` | Mensagem livre fora da janela de atendimento de 24 horas |
 | `131053` | Um upload passa do tamanho que o tipo permite, ou um arquivo enviado é mandado como um tipo de mensagem ao qual não pertence |
 | `131062` | Um template de autenticação que precisa de número de telefone vai para um BSUID |

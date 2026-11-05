@@ -11,7 +11,7 @@
             "webhook_url": "http://localhost:8000/webhooks/whatsapp",
             "verify_token": "wapit-example-verify",
             "auto_statuses": ["sent", "delivered"],
-            "sync": { "waba_id": "REAL_WABA_ID", "token_env": "WAPIT_SYNC_TOKEN", "graph_version": "v23.0" }
+            "sync": { "waba_id": "REAL_WABA_ID", "token_env": "WAPIT_SYNC_TOKEN", "graph_version": "v26.0" }
         }
     ]
 }

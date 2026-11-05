@@ -53,7 +53,7 @@ pub async fn run(config: &ConfigStore, app_id: &str) -> Result<String, String> {
         .ok()
         .filter(|token| !token.is_empty())
         .ok_or_else(|| format!("Set {token_env} to a token that can read the real WABA"))?;
-    let version = sync.graph_version.as_deref().unwrap_or("v23.0");
+    let version = sync.graph_version.as_deref().unwrap_or("v26.0");
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))

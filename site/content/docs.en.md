@@ -43,13 +43,15 @@ Run `wapit` with no configuration and it serves one default app. The inbox is on
 Set the same values in your app, with `http://127.0.0.1:8027` as the Graph API base URL, and send a message:
 
 ```bash
-curl http://127.0.0.1:8027/v23.0/100000000000001/messages \
+curl http://127.0.0.1:8027/v26.0/100000000000001/messages \
   -H 'Authorization: Bearer wapit-local-token' \
   -H 'Content-Type: application/json' \
   -d '{"messaging_product":"whatsapp","to":"15550000000","type":"text","text":{"body":"Hello"}}'
 ```
 
 A free-form message to someone who never wrote to you is accepted and then fails with error 131047, exactly as Meta does outside the 24-hour service window. Reply as the user from the inbox to open the window.
+
+wapit accepts any version in the path, or none. The examples use v26.0, the latest stable Graph API version, and webhooks have the v24.0 and later shape, without the `conversation` object in statuses.
 
 ## Configure your apps
 
@@ -79,7 +81,7 @@ Copy them from your real account, read-only, with:
 WAPIT_SYNC_TOKEN=... wapit sync <app id>
 ```
 
-This is the only command that talks to Meta, and only when you run it.
+It reads Graph API v26.0 unless the app's `sync.graph_version` says otherwise. This is the only command that talks to Meta, and only when you run it.
 
 ## Environment
 
@@ -131,7 +133,7 @@ Sends are checked like Meta checks them. A rejected send returns Meta's error to
 | `132016` | Template is disabled |
 | `132018` | Line breaks, tabs or more than 4 spaces in a row in a body parameter |
 | `131008` | A parameter is missing its text |
-| `131009` | Button index or type does not match the template |
+| `131009` | A value breaks Meta's rules: a field longer than its limit, duplicate button ids or titles, or a button index or type that does not match the template |
 | `131047` | Free-form message outside the 24-hour service window |
 | `131053` | An upload is larger than its type allows, or an uploaded file is sent as a message type it does not belong to |
 | `131062` | An authentication template that needs a phone number is sent to a BSUID |
