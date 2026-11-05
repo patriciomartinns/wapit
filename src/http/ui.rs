@@ -129,7 +129,8 @@ pub fn router(state: UiState) -> Router {
             "/conversations/{app}/{contact}/messages",
             post(send_as_user),
         )
-        .route("/messages", axum::routing::delete(delete_all))
+        .route("/messages", get(messages).delete(delete_all))
+        .route("/messages/{id}", get(message))
         .route("/messages/{id}/tap", post(tap))
         .route("/messages/{id}/status", post(fire_status))
         .route("/webhooks/{id}", get(webhook))
@@ -227,6 +228,53 @@ async fn conversation(
     ok(state
         .inbox
         .conversation(&app, &normalize_contact(&contact))?)
+}
+
+const MESSAGES_LIMIT: usize = 20;
+const MESSAGES_MAX: usize = 500;
+
+#[derive(Deserialize)]
+struct MessagesQuery {
+    app: Option<String>,
+    contact: Option<String>,
+    failed: Option<String>,
+    limit: Option<String>,
+}
+
+/// `GET /api/messages`, the documented read API `wapit messages` and coding agents use. Unlike the routes the
+/// inbox page calls, its shape is a contract.
+async fn messages(
+    State(state): State<UiState>,
+    query: Result<axum::extract::Query<MessagesQuery>, axum::extract::rejection::QueryRejection>,
+) -> ApiResult {
+    let invalid =
+        |message: &str| ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "invalid_query", message);
+    let axum::extract::Query(query) = query.map_err(|error| invalid(&error.body_text()))?;
+    let flagged = match query.failed.as_deref() {
+        None | Some("false" | "0") => false,
+        Some("true" | "1" | "") => true,
+        Some(_) => return Err(invalid("failed must be true or false")),
+    };
+    let limit = match query.limit.as_deref() {
+        None => MESSAGES_LIMIT,
+        Some(raw) => raw
+            .parse::<usize>()
+            .map_err(|_| invalid("limit must be a number from 1 to 500"))?
+            .clamp(1, MESSAGES_MAX),
+    };
+    let messages = state.inbox.messages(
+        query.app.as_deref(),
+        query.contact.as_deref(),
+        flagged,
+        limit,
+    )?;
+
+    ok(json!({ "messages": messages }))
+}
+
+/// `GET /api/messages/{id}`, the documented read API behind `wapit show`.
+async fn message(State(state): State<UiState>, Path(id): Path<String>) -> ApiResult {
+    ok(state.inbox.message(&id)?)
 }
 
 async fn delete_conversation(

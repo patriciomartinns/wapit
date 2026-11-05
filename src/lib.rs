@@ -5,6 +5,7 @@ pub mod http;
 pub mod inbox;
 pub mod media;
 pub mod model;
+pub mod report;
 pub mod store;
 pub mod sync;
 pub mod templates;

@@ -67,6 +67,17 @@ const MIGRATIONS: &[&str] = &[r"
     CREATE INDEX webhooks_message ON webhooks (message_id);
 "];
 
+/// Which messages `Store::messages` returns. `flagged` keeps the ones the inbox marks: rejected or failed sends and
+/// messages with an issue.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessageFilter {
+    pub app_id: Option<String>,
+    /// Any of these contacts, each limited to one app when it names one; empty means every contact.
+    pub contacts: Vec<(Option<String>, String)>,
+    pub flagged: bool,
+    pub limit: usize,
+}
+
 pub struct Store {
     db: Mutex<Connection>,
     media_dir: PathBuf,
@@ -168,6 +179,57 @@ impl Store {
             .db()
             .query_row("SELECT * FROM messages WHERE id = ?1", [id], to_message)
             .optional()?)
+    }
+
+    /// The newest messages first, across conversations, narrowed by `filter`.
+    pub fn messages(&self, filter: &MessageFilter) -> Result<Vec<Message>, StoreError> {
+        let mut conditions = Vec::new();
+        let mut values: Vec<String> = Vec::new();
+
+        if let Some(app_id) = &filter.app_id {
+            values.push(app_id.clone());
+            conditions.push(format!("app_id = ?{}", values.len()));
+        }
+        if !filter.contacts.is_empty() {
+            let mut any = Vec::new();
+            for (app_id, contact) in &filter.contacts {
+                values.push(contact.clone());
+                let contact_at = values.len();
+                match app_id {
+                    Some(app_id) => {
+                        values.push(app_id.clone());
+                        any.push(format!(
+                            "(contact = ?{contact_at} AND app_id = ?{})",
+                            values.len()
+                        ));
+                    }
+                    None => any.push(format!("contact = ?{contact_at}")),
+                }
+            }
+            conditions.push(format!("({})", any.join(" OR ")));
+        }
+        if filter.flagged {
+            let flagged = MessageStatus::FLAGGED
+                .iter()
+                .map(|status| format!("'{status}'"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            conditions.push(format!("(issues != '[]' OR status IN ({flagged}))"));
+        }
+
+        let filter_sql = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+        let db = self.db();
+        let mut statement = db.prepare(&format!(
+            "SELECT * FROM messages {filter_sql} ORDER BY created_at DESC, rowid DESC LIMIT {}",
+            filter.limit
+        ))?;
+        let rows = statement.query_map(params_from_iter(values), to_message)?;
+
+        Ok(rows.collect::<Result<_, _>>()?)
     }
 
     pub fn conversation(&self, app_id: &str, contact: &str) -> Result<Vec<Message>, StoreError> {

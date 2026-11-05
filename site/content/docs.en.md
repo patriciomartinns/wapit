@@ -146,6 +146,23 @@ The inspector shows the payload your app sent, each webhook delivery with your a
 
 wapit delivers each webhook once. Unlike Meta, which retries a failed delivery, it does not retry on its own: if your app is down or answers with an error, the delivery is marked failed in the inspector and you send it again from there.
 
+## Reading the inbox from the terminal
+
+`wapit messages` and `wapit show` read what a running wapit recorded, so you, a script or a coding agent can check why a send failed without opening the inbox.
+
+```sh
+wapit messages --failed
+wapit show <message id>
+```
+
+`wapit messages` lists the newest messages first, across conversations. `--failed` keeps rejected or failed sends and messages with an issue, `--app` and `--contact` narrow it to one app or one phone number or BSUID, and `--limit` sets how many come back (20 by default, up to 500). `wapit show` prints one message with the request your app sent, the error and its details, the statuses and every webhook delivery with your app's response.
+
+Both commands read the inbox at `http://127.0.0.1:8026` by default; point them elsewhere with `--inbox-url` or `WAPIT_INBOX_URL`. In a container, run them inside it, for example `docker exec <container> /wapit messages --failed`.
+
+Add `--json` for output a program can rely on. It prints what the read API returns: `GET /api/messages` (with the `app`, `contact`, `failed=true` and `limit` query parameters) answers `{ "messages": [...] }`, and `GET /api/messages/{id}` answers one message. Each message has `id`, `app_id`, `contact`, `direction`, `type`, `status`, `payload` (the request your app sent), `issues`, `error`, `context_id`, `created_at` in milliseconds, `statuses` and `webhooks`. A send Meta would refuse on the spot has `error` with `code`, `message` and `details`; a send that fails later, such as 131047 outside the service window, has `error` empty and the reason in the failed entry of `statuses`, under `error.code`, `error.message` and `error.error_data.details`. Each webhook has the URL, the status code, your app's `response` and the delivery `error`. The text output may change between releases; these JSON fields only grow. `rendered` is what the inbox page draws and may change with it.
+
+A request refused before wapit knows the recipient, such as a wrong token, an unknown phone number id or a body without `to`, is answered with the error and not recorded, so it only shows in your app's HTTP response.
+
 ## Security
 
 wapit has no authentication by design: it is a development tool for your own machine.

@@ -226,6 +226,27 @@ impl Harness {
         panic!("no webhook arrived");
     }
 
+    /// The first inbound-message webhook after `before`, skipping the status webhooks a send fires on its own.
+    async fn message_webhook_after(&self, before: usize) -> Received {
+        for _ in 0..300 {
+            let found = self
+                .received
+                .lock()
+                .unwrap()
+                .iter()
+                .skip(before)
+                .find(|received| value_of(received)["messages"].is_array())
+                .cloned();
+            if let Some(received) = found {
+                return received;
+            }
+
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        panic!("no message webhook arrived");
+    }
+
     fn received_count(&self) -> usize {
         self.received.lock().unwrap().len()
     }
@@ -590,7 +611,7 @@ async fn a_list_row_tap_reaches_the_webhook_with_its_description() {
             &json!({ "index": 0 }),
         )
         .await;
-    let message = value_of(&harness.webhook_after(before).await)["messages"][0].clone();
+    let message = value_of(&harness.message_webhook_after(before).await)["messages"][0].clone();
 
     assert_eq!(
         message["interactive"],
@@ -2554,4 +2575,133 @@ async fn a_database_from_the_node_release_is_adopted() {
         .await
         .unwrap();
     assert!(!media_file.exists());
+}
+
+#[tokio::test]
+async fn the_read_api_lists_failed_sends_newest_first_and_shows_one() {
+    let harness = harness().await;
+    let (_, sent) = harness
+        .post("/v26.0/100/messages", &valid_template(), "token-a")
+        .await;
+    let unknown = template_payload(&["a", "b", "c"], &["x", "y"], "nope", "en_US");
+    harness
+        .post("/v26.0/100/messages", &unknown, "token-a")
+        .await;
+
+    let all = harness.ui_get("/api/messages").await;
+    let failed = harness.ui_get("/api/messages?failed=true").await;
+    let limited = harness.ui_get("/api/messages?limit=1").await;
+    let other_app = harness.ui_get("/api/messages?app=b").await;
+
+    assert_eq!(all["messages"].as_array().unwrap().len(), 2);
+    assert_eq!(all["messages"][0]["status"], "rejected");
+    assert_eq!(all["messages"][1]["id"], sent["messages"][0]["id"]);
+    assert_eq!(failed["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(failed["messages"][0]["error"]["code"], 132_001);
+    assert_eq!(limited["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(other_app["messages"], json!([]));
+
+    let id = failed["messages"][0]["id"].as_str().unwrap();
+    let shown = harness
+        .ui_get(&format!("/api/messages/{}", encode(id)))
+        .await;
+
+    assert_eq!(shown["id"], id);
+    assert_eq!(shown["payload"]["template"]["name"], "nope");
+    assert!(shown["statuses"].is_array());
+    assert!(shown["webhooks"].is_array());
+
+    let missing = harness
+        .client
+        .get(format!("{}/api/messages/wamid.missing", harness.ui))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        missing.json::<Value>().await.unwrap()["code"],
+        "message_not_found"
+    );
+}
+
+#[tokio::test]
+async fn the_read_api_finds_a_phone_conversation_by_its_user_id_and_shows_late_failures() {
+    let harness = harness().await;
+    let before = harness.received_count();
+    harness
+        .ui_post(
+            "/api/conversations/a/5585999990000/messages",
+            &json!({ "kind": "text", "text": "Oi" }),
+        )
+        .await;
+    let user_id = value_of(&harness.webhook_after(before).await)["messages"][0]["from_user_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let by_user = harness
+        .ui_get(&format!("/api/messages?contact={}", encode(&user_id)))
+        .await;
+    assert_eq!(by_user["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(by_user["messages"][0]["contact"], "5585999990000");
+
+    let before = harness.received_count();
+    let outside = json!({ "messaging_product": "whatsapp", "to": "15550000009", "type": "text", "text": { "body": "Hi" } });
+    harness
+        .post("/v26.0/100/messages", &outside, "token-a")
+        .await;
+    harness.webhook_after(before).await;
+
+    let failed = harness
+        .ui_get("/api/messages?failed=1&contact=15550000009")
+        .await;
+    assert_eq!(failed["messages"][0]["status"], "failed");
+    assert_eq!(failed["messages"][0]["error"], Value::Null);
+    assert_eq!(
+        failed["messages"][0]["statuses"][0]["error"]["code"],
+        131_047
+    );
+
+    let invalid = harness
+        .client
+        .get(format!("{}/api/messages?limit=many", harness.ui))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(invalid.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        invalid.json::<Value>().await.unwrap()["code"],
+        "invalid_query"
+    );
+}
+
+#[tokio::test]
+async fn a_user_id_only_finds_its_own_app_s_conversation() {
+    let harness = harness().await;
+    harness
+        .ui_post(
+            "/api/conversations/a/5585999990000/messages",
+            &json!({ "kind": "text", "text": "Oi A" }),
+        )
+        .await;
+    let before = harness.received_count();
+    harness
+        .ui_post(
+            "/api/conversations/b/5585999990000/messages",
+            &json!({ "kind": "text", "text": "Oi B" }),
+        )
+        .await;
+    let received = harness.message_webhook_after(before).await;
+    assert_eq!(value_of(&received)["metadata"]["phone_number_id"], "101");
+    let user_id = value_of(&received)["messages"][0]["from_user_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let found = harness
+        .ui_get(&format!("/api/messages?contact={}", encode(&user_id)))
+        .await;
+
+    assert_eq!(found["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(found["messages"][0]["app_id"], "b");
 }

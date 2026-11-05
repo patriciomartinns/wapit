@@ -25,6 +25,7 @@ A local WhatsApp Cloud API mock and inbox, shipped as one Rust binary. README.md
 - A behavior change that touches Meta's contract (payload shapes, error codes, webhook bodies) needs a test in `tests/api.rs` and a source in Meta's documentation.
 - Server text that reaches the inbox is English. The UI owns its wording and translations in `public/i18n.js`; the server sends codes, such as `Issue`, not sentences.
 - A user-facing change updates the README and both docs sources in `site/content/` in the same change.
+- `GET /api/messages` and `GET /api/messages/{id}`, behind `wapit messages` and `wapit show --json`, are a documented contract for scripts and coding agents: add fields, never rename or remove them. `rendered` is the page's and is outside that promise. The other inbox routes serve the page and may change with it.
 - Add a dependency only when the standard library or an existing crate cannot do the job, and keep `Cargo.lock` committed. `cargo deny check` runs in CI.
 - Issues are the only way in for outside contributions: the repository only lets collaborators open pull requests, and changes are made by the maintainer. See CONTRIBUTING.md.
 

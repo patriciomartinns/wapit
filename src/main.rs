@@ -38,6 +38,41 @@ enum Command {
     Sync { app: String },
     /// Exit successfully when the Graph API mock answers on its port
     Healthcheck,
+    /// List the messages a running wapit recorded, newest first
+    Messages {
+        /// Only this app's messages
+        #[arg(long)]
+        app: Option<String>,
+        /// Only messages with this phone number or BSUID
+        #[arg(long, value_parser = clap::builder::NonEmptyStringValueParser::new())]
+        contact: Option<String>,
+        /// Only rejected or failed sends and messages with an issue
+        #[arg(long)]
+        failed: bool,
+        /// How many messages to print, up to 500
+        #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u16).range(1..=500))]
+        limit: u16,
+        #[command(flatten)]
+        read: Read,
+    },
+    /// Show one message with its request, error, statuses and webhooks
+    Show {
+        /// The message id, as `wapit messages` prints it
+        #[arg(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+        id: String,
+        #[command(flatten)]
+        read: Read,
+    },
+}
+
+#[derive(clap::Args)]
+struct Read {
+    /// Print the JSON the inbox API returns instead of text
+    #[arg(long)]
+    json: bool,
+    /// The running inbox to read; defaults to the inbox port on 127.0.0.1
+    #[arg(long, env = "WAPIT_INBOX_URL")]
+    inbox_url: Option<String>,
 }
 
 #[derive(clap::Args)]
@@ -86,6 +121,38 @@ async fn main() -> ExitCode {
             .await
             .map(|summary| println!("{summary}")),
         Command::Healthcheck => healthcheck(cli.serve.api_port).await,
+        Command::Messages {
+            app,
+            contact,
+            failed,
+            limit,
+            read,
+        } => {
+            let mut query = vec![("limit", limit.to_string())];
+            query.extend(app.map(|app| ("app", app)));
+            query.extend(contact.map(|contact| ("contact", contact)));
+            if failed {
+                query.push(("failed", "true".to_owned()));
+            }
+            let inbox = read.inbox(cli.serve.ui_port);
+            inbox_get(&inbox, "/api/messages", &query)
+                .await
+                .map(|response| {
+                    read.print(&response, |now| {
+                        wapit::report::messages(&response, now, failed)
+                    });
+                })
+        }
+        Command::Show { id, read } => {
+            let inbox = read.inbox(cli.serve.ui_port);
+            let path = format!(
+                "/api/messages/{}",
+                percent_encoding::utf8_percent_encode(&id, percent_encoding::NON_ALPHANUMERIC)
+            );
+            inbox_get(&inbox, &path, &[])
+                .await
+                .map(|response| read.print(&response, |now| wapit::report::message(&response, now)))
+        }
     };
 
     match result {
@@ -95,6 +162,88 @@ async fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+impl Read {
+    fn inbox(&self, ui_port: u16) -> String {
+        trim_url(
+            &self
+                .inbox_url
+                .clone()
+                .unwrap_or_else(|| format!("http://127.0.0.1:{ui_port}")),
+        )
+    }
+
+    fn print(&self, response: &serde_json::Value, text: impl FnOnce(i64) -> String) {
+        if self.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(response).unwrap_or_default()
+            );
+        } else {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| {
+                    i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX)
+                });
+            print!("{}", text(now));
+        }
+    }
+}
+
+/// Reads the inbox API of a running wapit. Errors name the address so a wrong port or a stopped container is obvious.
+async fn inbox_get(
+    inbox: &str,
+    path: &str,
+    query: &[(&str, String)],
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|error| error.to_string())?;
+    if !inbox.starts_with("http://") && !inbox.starts_with("https://") {
+        return Err(format!(
+            "The inbox URL {inbox} needs http:// or https://, for example http://127.0.0.1:8026"
+        ));
+    }
+
+    let response = client
+        .get(format!("{inbox}{path}"))
+        .query(query)
+        .send()
+        .await
+        .map_err(|_| {
+            format!(
+                "Could not reach the wapit inbox at {inbox}. Start wapit, or point --inbox-url or WAPIT_INBOX_URL at it."
+            )
+        })?;
+    let status = response.status();
+
+    if status == reqwest::StatusCode::METHOD_NOT_ALLOWED {
+        return Err(older(inbox));
+    }
+
+    let body: serde_json::Value = response.json().await.map_err(|_| {
+        format!("{inbox} answered {status} with something that is not the wapit inbox API")
+    })?;
+
+    if status.is_success() {
+        Ok(body)
+    } else if body["code"] == "route_not_found" {
+        Err(older(inbox))
+    } else {
+        Err(body["error"].as_str().map_or_else(
+            || format!("{inbox} answered {status} but does not look like the wapit inbox; check the inbox port"),
+            str::to_owned,
+        ))
+    }
+}
+
+fn older(inbox: &str) -> String {
+    format!(
+        "The wapit at {inbox} is older than this command. Update it to {} or newer.",
+        env!("CARGO_PKG_VERSION")
+    )
 }
 
 async fn serve_forever(config_dir: PathBuf, serve: Serve) -> Result<(), String> {

@@ -15,7 +15,7 @@ use crate::model::{
     Button, Contact, Direction, Media, MediaRef, Message, MessageStatus, Rendered, TemplateRef,
     Webhook, digits,
 };
-use crate::store::{Store, StoreError};
+use crate::store::{MessageFilter, Store, StoreError};
 use crate::templates;
 use crate::validate::{
     DEFAULT_MESSAGE_TYPE, OutboundContext, SERVICE_WINDOW_MS, validate_outbound,
@@ -1115,13 +1115,69 @@ impl Inbox {
     ) -> Result<ConversationView, InboxError> {
         self.require_app(app_id)?;
 
-        let messages = self.store.conversation(app_id, contact)?;
+        let messages = self.views(self.store.conversation(app_id, contact)?)?;
+        let last_inbound = self.store.last_inbound_at(app_id, contact)?;
+
+        Ok(ConversationView {
+            app_id: app_id.to_owned(),
+            contact: contact.to_owned(),
+            name: self.store.contact_name(app_id, contact)?,
+            window_open_until: last_inbound.map(|at| at + SERVICE_WINDOW_MS),
+            messages,
+        })
+    }
+
+    /// The newest messages first, across conversations, for `wapit messages`. A BSUID that wapit derived for a
+    /// phone number also finds that number's messages, as sending to it does. An app that left `apps.json` still
+    /// lists the messages it recorded.
+    pub fn messages(
+        &self,
+        app_id: Option<&str>,
+        contact: Option<&str>,
+        flagged: bool,
+        limit: usize,
+    ) -> Result<Vec<MessageView>, InboxError> {
+        let mut contacts: Vec<(Option<String>, String)> = Vec::new();
+
+        if let Some(contact) = contact.map(Contact::parse) {
+            let apps = match app_id {
+                Some(app_id) => self.config.app(app_id).into_iter().collect(),
+                None => self.config.apps(),
+            };
+            for app in apps {
+                let key = self.conversation_key(&app, &contact)?;
+                if key != contact.id() {
+                    contacts.push((Some(app.id.clone()), key));
+                }
+            }
+            contacts.push((None, contact.id().to_owned()));
+        }
+
+        let filter = MessageFilter {
+            app_id: app_id.map(str::to_owned),
+            contacts,
+            flagged,
+            limit,
+        };
+
+        self.views(self.store.messages(&filter)?)
+    }
+
+    /// One message with its statuses and webhooks, for `wapit show`.
+    pub fn message(&self, id: &str) -> Result<MessageView, InboxError> {
+        let message = self.store.message(id)?.ok_or_else(|| {
+            InboxError::NotFound(Problem::new("message_not_found", "Message not found"))
+        })?;
+
+        Ok(self.views(vec![message])?.remove(0))
+    }
+
+    fn views(&self, messages: Vec<Message>) -> Result<Vec<MessageView>, InboxError> {
         let ids: Vec<String> = messages.iter().map(|message| message.id.clone()).collect();
         let statuses = self.store.statuses(&ids)?;
         let webhooks = self.store.webhooks_for_messages(&ids)?;
-        let last_inbound = self.store.last_inbound_at(app_id, contact)?;
 
-        let messages = messages
+        Ok(messages
             .into_iter()
             .map(|message| MessageView {
                 statuses: statuses
@@ -1137,15 +1193,7 @@ impl Inbox {
                     .collect(),
                 message,
             })
-            .collect();
-
-        Ok(ConversationView {
-            app_id: app_id.to_owned(),
-            contact: contact.to_owned(),
-            name: self.store.contact_name(app_id, contact)?,
-            window_open_until: last_inbound.map(|at| at + SERVICE_WINDOW_MS),
-            messages,
-        })
+            .collect())
     }
 
     pub fn delete_conversation(&self, app_id: &str, contact: &str) -> Result<(), InboxError> {

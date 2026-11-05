@@ -2,11 +2,11 @@
 
 > wapit is a local WhatsApp Cloud API for development: Mailpit, but for WhatsApp. One binary serves a Graph API mock on http://127.0.0.1:8027 and an inbox on http://127.0.0.1:8026. Apps point their Graph API base URL at it, sends are validated like Meta validates them and answered with Meta's error codes, and the developer replies as the user, with every action delivered to the app as a signed webhook.
 
-wapit runs with no configuration and serves a default app: phone number id `100000000000001`, WABA id `200000000000001`, access token `wapit-local-token`, app secret `wapit-local-secret`, webhook URL `http://localhost:8000/webhook`. It only talks to Meta when the user runs `wapit sync`. It is not affiliated with Meta or WhatsApp.
+wapit runs with no configuration and serves a default app: phone number id `100000000000001`, WABA id `200000000000001`, access token `wapit-local-token`, app secret `wapit-local-secret`, webhook URL `http://localhost:8000/webhook`. To see why a send failed, run `wapit messages --failed --json` and `wapit show <id> --json` against the running inbox (http://127.0.0.1:8026 by default, or `WAPIT_INBOX_URL`). It only talks to Meta when the user runs `wapit sync`. It is not affiliated with Meta or WhatsApp.
 
 ## Docs
 
-- [Full documentation](https://wapit.patriciomartins.com.br/llms-full.txt): install, quick start, app configuration, templates, environment variables, Graph API coverage, error codes, acting as the user and security, in Markdown
+- [Full documentation](https://wapit.patriciomartins.com.br/llms-full.txt): install, quick start, app configuration, templates, environment variables, Graph API coverage, error codes, acting as the user, reading the inbox from the terminal and security, in Markdown
 - [Documentation page](https://wapit.patriciomartins.com.br/docs/): the same content as HTML
 - [Documentação em português](https://wapit.patriciomartins.com.br/pt-br/llms-full.txt): the documentation in Brazilian Portuguese
 
