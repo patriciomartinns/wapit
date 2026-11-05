@@ -27,3 +27,10 @@ A local WhatsApp Cloud API mock and inbox, shipped as one Rust binary. README.md
 - A user-facing change updates the README and both docs sources in `site/content/` in the same change.
 - Add a dependency only when the standard library or an existing crate cannot do the job, and keep `Cargo.lock` committed. `cargo deny check` runs in CI.
 - Issues are the only way in for outside contributions: the repository only lets collaborators open pull requests, and changes are made by the maintainer. See CONTRIBUTING.md.
+
+## Releasing
+
+- Bump `version` in `Cargo.toml`, run `cargo check` so `Cargo.lock` follows, and commit both on `main` once CI is green.
+- Push an annotated tag `v<version>` that matches `Cargo.toml`; the `Release` workflow refuses a mismatch.
+- The workflow tests and builds the five targets, publishes the archives with `SHA256SUMS` and build provenance as a GitHub release with generated notes, pushes the multi-arch image to `ghcr.io/patriciomartinns/wapit` (`latest` plus the version tags), and updates `Formula/wapit.rb` in `patriciomartinns/homebrew-tap` through the `homebrew` environment and its `HOMEBREW_TAP_SSH_KEY` secret.
+- After it finishes, check the release page, `docker pull ghcr.io/patriciomartinns/wapit:<version>`, and `brew upgrade wapit` reporting the new version.
