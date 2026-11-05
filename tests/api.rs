@@ -2200,6 +2200,24 @@ async fn templates_are_listed_with_filters_and_pages() {
     assert_eq!(names(&second), ["promo"]);
     assert!(second["paging"].get("next").is_none());
     assert!(second["paging"]["previous"].is_string());
+
+    let filtered = list_templates(&harness, "limit=1&language=en_US&name=order%20ready%26x").await;
+    assert_eq!(filtered["data"], json!([]));
+
+    let filtered = list_templates(&harness, "limit=1&language=en_US,pt_BR").await;
+    let next = filtered["paging"]["next"].as_str().unwrap();
+    assert!(next.contains("language=en%5FUS%2Cpt%5FBR"), "{next}");
+    let page: Value = harness
+        .client
+        .get(next)
+        .bearer_auth("token-a")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(names(&page), ["reordered"]);
 }
 
 #[tokio::test]

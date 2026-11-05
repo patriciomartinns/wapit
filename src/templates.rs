@@ -277,6 +277,10 @@ fn list_parameter(raw: Option<&String>) -> Vec<String> {
         .collect()
 }
 
+fn query_value(value: &str) -> String {
+    percent_encoding::utf8_percent_encode(value, percent_encoding::NON_ALPHANUMERIC).to_string()
+}
+
 fn encode_cursor(position: usize) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(position.to_string())
 }
@@ -346,12 +350,12 @@ impl ListQuery {
             ("language", &self.languages),
         ] {
             if !values.is_empty() {
-                parameters.push(format!("{key}={}", values.join(",")));
+                parameters.push(format!("{key}={}", query_value(&values.join(","))));
             }
         }
 
         if let Some(name) = &self.name {
-            parameters.push(format!("name={name}"));
+            parameters.push(format!("name={}", query_value(name)));
         }
 
         parameters.push(format!("{}={}", cursor.0, encode_cursor(cursor.1)));
