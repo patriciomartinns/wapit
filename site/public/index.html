@@ -57,7 +57,6 @@
 
   <main id="main">
     <section class="hero">
-      <p class="eyebrow">A local WhatsApp Cloud API for development</p>
       <h1>Mailpit, but for WhatsApp.</h1>
       <p class="lead">Point your app at wapit and every message it sends lands in an inbox that looks like a chat. Each send is checked the way Meta checks it, and you reply as the user.</p>
       <div class="actions">
@@ -68,45 +67,94 @@
       <p class="note">On Windows, download the <a href="https://github.com/patriciomartinns/wapit/releases/latest">.zip from the latest release</a>. Also as a <a href="/docs/#install">container image</a> and with cargo install.</p>
     </section>
 
-    <figure class="showcase">
+    <figure class="showcase"><div class="frame">
       <img class="dark" src="/inbox-dark.webp" width="2496" height="1560" alt="" loading="lazy">
-      <img class="light" src="/inbox.webp" width="2496" height="1560" alt="The wapit inbox: a customer asks about an order, the app answers with a template with buttons, the customer taps a reply and each webhook delivery is shown under the message">
+      <img class="light" src="/inbox.webp" width="2496" height="1560" alt="The wapit inbox: a customer asks about an order and the app answers with a template with buttons, with the webhook delivery shown under the message">
+    </div>
     </figure>
+
+    <section class="section" aria-labelledby="webhooks">
+      <div class="intro">
+        <h2 id="webhooks">Tap a button. Your app gets the webhook.</h2>
+        <p>Reply, attach a file, tap a button or mark a message read in the inbox. wapit posts the same payload Meta would, signed with your app secret.</p>
+      </div>
+      <div class="pair">
+        <div class="inbox-panel" role="img" aria-label="In the wapit inbox: Tapped Yes, hold it">
+          <div class="slip">
+            <div class="slip-body"><p class="slip-title">Hold it for you?</p><p>Want us to keep your order at the counter until Friday?</p><p class="slip-meta">14:06 Read</p></div>
+            <p class="slip-button"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 4 3 7.5 6.5 11M3 7.5h6a4 4 0 0 1 4 4v1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Yes, hold it</p>
+            <p class="slip-button"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 4 3 7.5 6.5 11M3 7.5h6a4 4 0 0 1 4 4v1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>No, thanks</p>
+          </div>
+          <p class="tap"><span>Tapped</span> <strong>Yes, hold it</strong> <span>14:07</span></p>
+          <p class="delivery">Webhook delivered: Example Shop answered 200 in 38 ms</p>
+        </div>
+        <figure class="code-panel">
+          <figcaption><span>POST localhost:8000/webhook</span><span class="ok">200 in 38 ms</span><span class="sr">Request your app receives</span></figcaption>
+<pre><span class="out">X-Hub-Signature-256: sha256=4f0c9e…b21a</span>
+
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "200000000000002",
+    "changes": [{
+      "field": "messages",
+      "value": {
+        "contacts": [{ "wa_id": "15550001234",
+          "profile": { "name": "Mary Smith" } }],
+        "messages": [{
+          "type": "interactive",
+          "interactive": {
+            "type": "button_reply",
+            <mark>"button_reply": { "id": "hold",
+              "title": "Yes, hold it" }</mark>
+          }
+        }]
+      }
+    }]
+  }]
+}</pre>
+        </figure>
+      </div>
+    </section>
 
     <section class="section desk" aria-labelledby="validation">
       <div class="intro">
-        <p class="eyebrow">01 · Validation</p>
         <h2 id="validation">Fails where Meta fails.</h2>
-        <p>Template sends are checked against the stored template. A bad send gets Meta's error code back, and stays in the inbox, flagged, with the reason in plain words.</p>
+        <p>Template sends are checked against the stored template. A bad send gets Meta's error back, and stays in the inbox flagged, with the reason in plain words.</p>
       </div>
-      <ul class="codes">
-        <li><code>132000</code><span>Parameter count does not match the template</span></li>
-        <li><code>132001</code><span>Template name or language does not exist</span></li>
-        <li><code>132005</code><span>Text too long after the variables are filled in</span></li>
-        <li><code>132012</code><span>Header format does not match the template</span></li>
-        <li><code>132015</code><span>Template is paused, or disabled (132016)</span></li>
-        <li><code>132018</code><span>Line breaks or long runs of spaces in a parameter</span></li>
-        <li><code>131009</code><span>Button index or type does not match</span></li>
-        <li><code>131047</code><span>Free-form message outside the 24-hour window</span></li>
-      </ul>
+      <div class="pair">
+        <ul class="codes" aria-label="Error codes wapit checks">
+          <li class="current"><code>132000</code><span>Parameter count does not match the template</span></li>
+          <li><code>132001</code><span>Template name or language does not exist</span></li>
+          <li><code>132005</code><span>Text too long after the variables are filled in</span></li>
+          <li><code>132012</code><span>Header format does not match the template</span></li>
+          <li><code>132015</code><span>Template is paused, or disabled (132016)</span></li>
+          <li><code>132018</code><span>Line breaks or long runs of spaces in a parameter</span></li>
+          <li><code>131009</code><span>Button index or type does not match</span></li>
+          <li><code>131047</code><span>Free-form message outside the 24-hour window</span></li>
+        </ul>
+        <figure class="code-panel">
+          <figcaption><span>POST /v23.0/100000000000002/messages</span><span class="fail">400</span><span class="sr">Response to a send with the wrong parameter count</span></figcaption>
+<pre>{
+  "error": {
+    "message": "(#132000) Number of parameters does not
+      match the expected number of params",
+    "type": "OAuthException",
+    <mark>"code": 132000,</mark>
+    "error_data": {
+      "messaging_product": "whatsapp",
+      "details": "body: number of localizable_params (2)
+        does not match the expected number of params (3)"
+    },
+    "fbtrace_id": "A3kQ8x…"
+  }
+}</pre>
+        </figure>
+      </div>
     </section>
 
-    <section class="section stack" aria-labelledby="webhooks">
+    <section class="section split" aria-labelledby="quick-start">
       <div class="intro">
-        <p class="eyebrow">02 · Webhooks</p>
-        <h2 id="webhooks">Reply as the user.</h2>
-        <p>Every action in the inbox reaches your app as a webhook in Meta's payload format, signed with your app secret in <code>X-Hub-Signature-256</code>.</p>
-      </div>
-      <div class="cards">
-        <article class="card"><p class="kind">messages</p><h3>Type or attach</h3><p>Send text, an image or a document. The first message opens the 24-hour window.</p></article>
-        <article class="card"><p class="kind">interactive</p><h3>Tap a button</h3><p>Reply buttons, quick replies and list rows send the same payload a real phone does.</p></article>
-        <article class="card"><p class="kind">statuses</p><h3>Mark delivered, read or failed</h3><p>Pick any of your app's messages and fire a status, failures with real Meta error codes.</p></article>
-      </div>
-    </section>
-
-    <section class="section ink" aria-labelledby="quick-start">
-      <div class="intro">
-        <p class="eyebrow">03 · Quick start</p>
         <h2 id="quick-start">Works with no config.</h2>
         <p>One binary and a local SQLite file. Run it and it serves a default app. It never talks to Meta unless you run <code>wapit sync</code>.</p>
       </div>

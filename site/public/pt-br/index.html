@@ -57,7 +57,6 @@
 
   <main id="main">
     <section class="hero">
-      <p class="eyebrow">Uma WhatsApp Cloud API local para desenvolvimento</p>
       <h1>O Mailpit do WhatsApp.</h1>
       <p class="lead">Aponte o seu app para o wapit e cada mensagem que ele envia chega numa caixa de entrada com cara de conversa. Cada envio é conferido como a Meta confere, e você responde como o usuário.</p>
       <div class="actions">
@@ -68,45 +67,94 @@
       <p class="note">No Windows, baixe o <a href="https://github.com/patriciomartinns/wapit/releases/latest">.zip da release mais recente</a>. Também como <a href="/pt-br/docs/#instalacao">imagem de container</a> e com cargo install.</p>
     </section>
 
-    <figure class="showcase">
+    <figure class="showcase"><div class="frame">
       <img class="dark" src="/inbox-dark.webp" width="2496" height="1560" alt="" loading="lazy">
-      <img class="light" src="/inbox.webp" width="2496" height="1560" alt="A caixa de entrada do wapit: uma cliente pergunta do pedido, o app responde com um template com botões, a cliente toca numa resposta e cada entrega de webhook aparece embaixo da mensagem">
+      <img class="light" src="/inbox.webp" width="2496" height="1560" alt="A caixa de entrada do wapit: uma cliente pergunta do pedido e o app responde com um template com botões, com a entrega do webhook embaixo da mensagem">
+    </div>
     </figure>
+
+    <section class="section" aria-labelledby="webhooks">
+      <div class="intro">
+        <h2 id="webhooks">Toque num botão. O seu app recebe o webhook.</h2>
+        <p>Responda, anexe um arquivo, toque num botão ou marque uma mensagem como lida na caixa de entrada. O wapit envia o mesmo payload que a Meta enviaria, assinado com o seu app secret.</p>
+      </div>
+      <div class="pair">
+        <div class="inbox-panel" role="img" aria-label="Na caixa de entrada do wapit: Tocou em Yes, hold it">
+          <div class="slip">
+            <div class="slip-body"><p class="slip-title">Hold it for you?</p><p>Want us to keep your order at the counter until Friday?</p><p class="slip-meta">14:06 Lida</p></div>
+            <p class="slip-button"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 4 3 7.5 6.5 11M3 7.5h6a4 4 0 0 1 4 4v1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Yes, hold it</p>
+            <p class="slip-button"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 4 3 7.5 6.5 11M3 7.5h6a4 4 0 0 1 4 4v1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>No, thanks</p>
+          </div>
+          <p class="tap"><span>Tocou em</span> <strong>Yes, hold it</strong> <span>14:07</span></p>
+          <p class="delivery">Webhook entregue: Example Shop respondeu 200 em 38 ms</p>
+        </div>
+        <figure class="code-panel">
+          <figcaption><span>POST localhost:8000/webhook</span><span class="ok">200 em 38 ms</span><span class="sr">Requisição que o seu app recebe</span></figcaption>
+<pre><span class="out">X-Hub-Signature-256: sha256=4f0c9e…b21a</span>
+
+{
+  "object": "whatsapp_business_account",
+  "entry": [{
+    "id": "200000000000002",
+    "changes": [{
+      "field": "messages",
+      "value": {
+        "contacts": [{ "wa_id": "15550001234",
+          "profile": { "name": "Mary Smith" } }],
+        "messages": [{
+          "type": "interactive",
+          "interactive": {
+            "type": "button_reply",
+            <mark>"button_reply": { "id": "hold",
+              "title": "Yes, hold it" }</mark>
+          }
+        }]
+      }
+    }]
+  }]
+}</pre>
+        </figure>
+      </div>
+    </section>
 
     <section class="section desk" aria-labelledby="validation">
       <div class="intro">
-        <p class="eyebrow">01 · Validação</p>
         <h2 id="validation">Falha onde a Meta falha.</h2>
-        <p>Os envios de template são conferidos contra o template salvo. Um envio errado recebe de volta o código de erro da Meta e fica na caixa de entrada, marcado, com o motivo em palavras simples.</p>
+        <p>Os envios de template são conferidos contra o template salvo. Um envio errado recebe o erro da Meta e fica na caixa de entrada, marcado, com o motivo em palavras simples.</p>
       </div>
-      <ul class="codes">
-        <li><code>132000</code><span>A quantidade de parâmetros não bate com o template</span></li>
-        <li><code>132001</code><span>O nome ou o idioma do template não existe</span></li>
-        <li><code>132005</code><span>Texto longo demais depois de preencher as variáveis</span></li>
-        <li><code>132012</code><span>O formato do cabeçalho não bate com o template</span></li>
-        <li><code>132015</code><span>Template pausado, ou desativado (132016)</span></li>
-        <li><code>132018</code><span>Quebras de linha ou muitos espaços seguidos num parâmetro</span></li>
-        <li><code>131009</code><span>O índice ou o tipo do botão não bate</span></li>
-        <li><code>131047</code><span>Mensagem livre fora da janela de 24 horas</span></li>
-      </ul>
+      <div class="pair">
+        <ul class="codes" aria-label="Códigos de erro que o wapit confere">
+          <li class="current"><code>132000</code><span>A quantidade de parâmetros não bate com o template</span></li>
+          <li><code>132001</code><span>O nome ou o idioma do template não existe</span></li>
+          <li><code>132005</code><span>Texto longo demais depois de preencher as variáveis</span></li>
+          <li><code>132012</code><span>O formato do cabeçalho não bate com o template</span></li>
+          <li><code>132015</code><span>Template pausado, ou desativado (132016)</span></li>
+          <li><code>132018</code><span>Quebras de linha ou muitos espaços seguidos num parâmetro</span></li>
+          <li><code>131009</code><span>O índice ou o tipo do botão não bate</span></li>
+          <li><code>131047</code><span>Mensagem livre fora da janela de 24 horas</span></li>
+        </ul>
+        <figure class="code-panel">
+          <figcaption><span>POST /v23.0/100000000000002/messages</span><span class="fail">400</span><span class="sr">Resposta a um envio com a quantidade errada de parâmetros</span></figcaption>
+<pre>{
+  "error": {
+    "message": "(#132000) Number of parameters does not
+      match the expected number of params",
+    "type": "OAuthException",
+    <mark>"code": 132000,</mark>
+    "error_data": {
+      "messaging_product": "whatsapp",
+      "details": "body: number of localizable_params (2)
+        does not match the expected number of params (3)"
+    },
+    "fbtrace_id": "A3kQ8x…"
+  }
+}</pre>
+        </figure>
+      </div>
     </section>
 
-    <section class="section stack" aria-labelledby="webhooks">
+    <section class="section split" aria-labelledby="quick-start">
       <div class="intro">
-        <p class="eyebrow">02 · Webhooks</p>
-        <h2 id="webhooks">Responda como o usuário.</h2>
-        <p>Cada ação na caixa de entrada chega ao seu app como webhook no formato de payload da Meta, assinado com o seu app secret em <code>X-Hub-Signature-256</code>.</p>
-      </div>
-      <div class="cards">
-        <article class="card"><p class="kind">messages</p><h3>Digite ou anexe</h3><p>Mande texto, imagem ou documento. A primeira mensagem abre a janela de 24 horas.</p></article>
-        <article class="card"><p class="kind">interactive</p><h3>Toque num botão</h3><p>Botões de resposta, respostas rápidas e itens de lista mandam o mesmo payload de um celular de verdade.</p></article>
-        <article class="card"><p class="kind">statuses</p><h3>Marque entregue, lida ou falha</h3><p>Escolha qualquer mensagem do seu app e dispare um status, com falhas usando códigos reais da Meta.</p></article>
-      </div>
-    </section>
-
-    <section class="section ink" aria-labelledby="quick-start">
-      <div class="intro">
-        <p class="eyebrow">03 · Primeiros passos</p>
         <h2 id="quick-start">Funciona sem configurar nada.</h2>
         <p>Um binário e um arquivo SQLite local. Rode e ele serve um app padrão. Nunca fala com a Meta, a não ser que você rode <code>wapit sync</code>.</p>
       </div>

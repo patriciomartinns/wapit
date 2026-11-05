@@ -225,7 +225,6 @@ function page(locale, doc) {
       <a class="llms" href="${markdownUrl}"><code>llms-full.txt</code><span>${text.llms}</span></a>
     </nav>
     <main class="content" id="main">
-      <p class="eyebrow">${text.version} · v${locale.version}</p>
       <h1>${escape(doc.title)}</h1>
       <p class="lead">${inline(doc.lead)}</p>
       <div class="page-tools">

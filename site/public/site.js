@@ -20,68 +20,6 @@ for (const button of themeButtons) {
 
 showTheme();
 
-const sections = document.querySelectorAll('.section, .content > :nth-child(n+5)');
-
-const starSlots = document.querySelectorAll('[data-stars]');
-
-async function stars() {
-  const key = 'wapit.stars';
-  try {
-    const cached = JSON.parse(sessionStorage.getItem(key) ?? 'null');
-    if (cached && Date.now() - cached.at < 3_600_000) return cached.count;
-  } catch {}
-  const response = await fetch('https://api.github.com/repos/patriciomartinns/wapit', {
-    headers: { Accept: 'application/vnd.github+json' },
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const count = (await response.json()).stargazers_count;
-  try { sessionStorage.setItem(key, JSON.stringify({ count, at: Date.now() })); } catch {}
-  return count;
-}
-
-if (starSlots.length > 0) {
-  stars()
-    .then((count) => {
-      if (!Number.isInteger(count) || count < 1) return;
-      const label = new Intl.NumberFormat(document.documentElement.lang, { notation: 'compact' }).format(count);
-      const title = document.documentElement.lang === 'pt-BR' ? `${count} estrelas no GitHub` : `${count} stars on GitHub`;
-      for (const slot of starSlots) {
-        slot.textContent = label;
-        slot.title = title;
-        slot.setAttribute('aria-label', title);
-        slot.hidden = false;
-      }
-    })
-    .catch(() => {});
-}
-
-const firstDelay =document.querySelector('.content') ? 200 : 320;
-
-if ('IntersectionObserver' in window) {
-  const reveal = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      entry.target.classList.add('shown');
-      reveal.unobserve(entry.target);
-    }
-  }, { rootMargin: '0px 0px -8% 0px' });
-
-  const visible = [];
-  for (const section of sections) {
-    if (section.getBoundingClientRect().top < innerHeight) visible.push(section);
-    else reveal.observe(section);
-  }
-  requestAnimationFrame(() => {
-    visible.forEach((section, order) => {
-      section.style.setProperty('--delay', `${firstDelay + Math.min(order, 8) * 60}ms`);
-      section.classList.add('shown');
-    });
-  });
-} else {
-  for (const section of sections) section.classList.add('shown');
-}
-
-document.documentElement.classList.add('ready');
 
 const copied ={ en: 'Copied', 'pt-BR': 'Copiado' }[document.documentElement.lang] ?? 'Copied';
 
