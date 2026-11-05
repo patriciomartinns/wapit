@@ -13,7 +13,7 @@ use crate::model::{
     Button, Direction, Media, MediaRef, Message, Rendered, TemplateRef, Webhook, digits, now_ms,
 };
 use crate::store::{Store, StoreError};
-use crate::validate::{OutboundContext, validate_outbound};
+use crate::validate::{DEFAULT_MESSAGE_TYPE, OutboundContext, validate_outbound};
 use crate::webhooks::{StatusUpdate, WebhookSender, envelope, inbound_value, status_value};
 
 pub struct FailureReason {
@@ -147,15 +147,24 @@ async fn write_media_file(path: &std::path::Path, data: &[u8]) -> Result<(), Sto
     Ok(())
 }
 
-fn failure_reason(code: Option<&str>) -> &'static FailureReason {
-    let code = code
-        .and_then(|code| code.parse::<i64>().ok())
-        .unwrap_or(131_026);
+/// The reason a simulated `failed` status carries. Without a code it is 131026, the generic undeliverable error.
+fn failure_reason(code: Option<&str>) -> Result<&'static FailureReason, InboxError> {
+    let Some(code) = code.map(str::trim).filter(|code| !code.is_empty()) else {
+        return Ok(&FAILURE_REASONS[0]);
+    };
 
-    FAILURE_REASONS
-        .iter()
-        .find(|reason| reason.code == code)
-        .unwrap_or(&FAILURE_REASONS[0])
+    code.parse::<i64>()
+        .ok()
+        .and_then(|code| FAILURE_REASONS.iter().find(|reason| reason.code == code))
+        .ok_or_else(|| {
+            InboxError::Invalid(
+                Problem::new(
+                    "unknown_failure_code",
+                    format!("wapit cannot simulate a failure with error code {code}"),
+                )
+                .detail(code),
+            )
+        })
 }
 
 impl Inbox {
@@ -286,7 +295,7 @@ impl Inbox {
         let kind = payload
             .get("type")
             .and_then(Value::as_str)
-            .unwrap_or("unknown")
+            .unwrap_or(DEFAULT_MESSAGE_TYPE)
             .to_owned();
         let template = payload.get("template").map(|template| TemplateRef {
             name: template
@@ -380,8 +389,12 @@ impl Inbox {
                 InboxError::NotFound(Problem::new("message_not_found", "Sent message not found"))
             })?;
         let app = self.require_app(&message.app_id)?;
-        let error = (status == "failed").then(|| {
-            let reason = failure_reason(failure_code);
+        let reason = if status == "failed" {
+            Some(failure_reason(failure_code)?)
+        } else {
+            None
+        };
+        let error = reason.map(|reason| {
             json!({
                 "code": reason.code,
                 "title": reason.title,
@@ -748,7 +761,8 @@ impl Inbox {
         Ok(())
     }
 
-    /// Sends a recorded webhook again with the same body and signature, like Meta's retries after a failed delivery.
+    /// Sends a recorded webhook again with the same body, like Meta's retries after a failed delivery. The body is
+    /// signed again with the app's current secret, so a redelivery after a secret change verifies against the new one.
     pub async fn redeliver(&self, webhook_id: i64) -> Result<Webhook, InboxError> {
         let original = self.store.webhook(webhook_id)?.ok_or_else(|| {
             InboxError::NotFound(Problem::new("webhook_not_found", "Webhook not found"))

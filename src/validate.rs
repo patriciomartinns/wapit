@@ -8,6 +8,9 @@ use crate::config::{Template, TemplateButton};
 use crate::graph_error::GraphError;
 use crate::model::{BodyPart, Button, Issue, MediaRef, Rendered, TemplateRef, digits};
 
+/// Meta treats a send without `type` as a text message.
+pub const DEFAULT_MESSAGE_TYPE: &str = "text";
+
 pub const SERVICE_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 
 const MEDIA_TYPES: &[&str] = &["image", "document", "audio", "video", "sticker"];
@@ -753,7 +756,7 @@ pub fn validate_outbound(
             .details(format!("to: {to} is not a valid WhatsApp phone number")));
     }
 
-    let kind = string(payload.get("type")).unwrap_or("text");
+    let kind = string(payload.get("type")).unwrap_or(DEFAULT_MESSAGE_TYPE);
 
     if !MESSAGE_TYPES.contains(&kind) {
         return Err(GraphError::new(

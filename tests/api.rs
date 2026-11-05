@@ -646,6 +646,49 @@ async fn a_failed_status_carries_a_meta_error() {
 }
 
 #[tokio::test]
+async fn a_failure_with_an_unknown_error_code_is_refused() {
+    let harness = harness().await;
+    let message_id = harness
+        .post("/v26.0/100/messages", &valid_template(), "token-a")
+        .await
+        .1["messages"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let before = harness.received_count();
+
+    let response = harness
+        .ui_post(
+            &format!("/api/messages/{}/status", encode(&message_id)),
+            &json!({ "status": "failed", "error_code": "999999" }),
+        )
+        .await;
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["code"], "unknown_failure_code");
+    assert_eq!(body["detail"], "999999");
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(harness.received_count(), before);
+}
+
+#[tokio::test]
+async fn a_rejected_send_without_a_type_is_recorded_as_text() {
+    let harness = harness().await;
+    let payload =
+        json!({ "messaging_product": "whatsapp", "to": "15550000010", "text": { "body": "" } });
+    let (status, _) = harness
+        .post("/v26.0/100/messages", &payload, "token-a")
+        .await;
+    let rejected = &harness.ui_get("/api/conversations/a/15550000010").await["messages"][0];
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(rejected["status"], "rejected");
+    assert_eq!(rejected["type"], "text");
+    assert_eq!(rejected["rendered"]["kind"], "text");
+}
+
+#[tokio::test]
 async fn a_late_status_never_moves_a_message_backwards() {
     let harness = harness().await;
     let message_id = harness
