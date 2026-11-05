@@ -20,7 +20,7 @@ for (const button of themeButtons) {
 
 showTheme();
 
-const sections = document.querySelectorAll('.section');
+const sections = document.querySelectorAll('.section, .content > :nth-child(n+5)');
 
 if (sections.length > 0 && 'IntersectionObserver' in window) {
   const reveal = new IntersectionObserver((entries) => {

@@ -458,7 +458,28 @@ code, pre, kbd { font-family: var(--font-mono); }
   .content > :nth-child(3) { animation-delay: 100ms; }
   .content > :nth-child(4) { animation-delay: 150ms; }
 
+  .toc > * { animation: rise 520ms var(--ease-out) both; }
+  .toc > :nth-child(2) { animation-delay: 40ms; }
+  .toc > :nth-child(3) { animation-delay: 70ms; }
+  .toc > :nth-child(4) { animation-delay: 100ms; }
+  .toc > :nth-child(5) { animation-delay: 130ms; }
+  .toc > :nth-child(6) { animation-delay: 160ms; }
+  .toc > :nth-child(7) { animation-delay: 190ms; }
+  .toc > :nth-child(8) { animation-delay: 220ms; }
+  .toc > :nth-child(9) { animation-delay: 250ms; }
+  .toc > :nth-child(10) { animation-delay: 280ms; }
+  .toc > :nth-child(n+11) { animation-delay: 310ms; }
+
   .js .reveal { opacity: 0; transform: translateY(24px); }
+  .js .content > .reveal { transform: translateY(12px); }
+  .js .content > .reveal.shown { transition-duration: 520ms; }
+  .js .reveal.shown .table tr { animation: rise 420ms var(--ease-out) both; }
+  .js .reveal.shown .table tr:nth-child(2) { animation-delay: 30ms; }
+  .js .reveal.shown .table tr:nth-child(3) { animation-delay: 60ms; }
+  .js .reveal.shown .table tr:nth-child(4) { animation-delay: 90ms; }
+  .js .reveal.shown .table tr:nth-child(5) { animation-delay: 120ms; }
+  .js .reveal.shown .table tr:nth-child(6) { animation-delay: 150ms; }
+  .js .reveal.shown .table tr:nth-child(n+7) { animation-delay: 180ms; }
   .js .reveal.shown {
     opacity: 1;
     transform: none;
