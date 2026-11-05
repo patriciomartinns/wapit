@@ -238,6 +238,12 @@ function page(locale, doc) {
         <button class="md-button" type="button" data-markdown-page>${markdownIcon}<span class="label">${text.copyPage}</span></button>
         <a class="md-button" href="${markdownUrl}">${text.viewPage}</a>
       </div>
+      <details class="toc-mobile">
+        <summary><span>${text.onThisPage}</span><span class="current" data-toc-current>${escape(doc.sections[0]?.heading ?? '')}</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+        <nav aria-label="${text.onThisPage}">
+          ${doc.sections.map(({ id, heading }) => `<a href="#${id}">${escape(heading)}</a>`).join('\n          ')}
+        </nav>
+      </details>
 ${doc.body}
     </main>
   </div>

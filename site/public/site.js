@@ -1,40 +1,3 @@
-const tabs = [...document.querySelectorAll('.codes [role="tab"]')];
-
-if (tabs.length > 0) {
-  const panel = document.getElementById('error-panel');
-  const caption = panel.querySelector('[data-error-caption]');
-  const status = panel.querySelector('[data-error-status]');
-  const body = panel.querySelector('[data-error-body]');
-  const escape = (text) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-
-  const select = async (tab, focus) => {
-    const { errors } = await import('/errors.js');
-    const error = errors[tab.dataset.code];
-    if (!error) return;
-    for (const other of tabs) {
-      const selected = other === tab;
-      other.setAttribute('aria-selected', String(selected));
-      other.tabIndex = selected ? 0 : -1;
-    }
-    panel.setAttribute('aria-labelledby', tab.id);
-    caption.textContent = error.caption;
-    status.textContent = error.status;
-    body.innerHTML = escape(JSON.stringify(error.body, null, 2)).replace(/^(\s*)("code": \d+,?)$/m, '$1<mark>$2</mark>');
-    if (focus) tab.focus();
-  };
-
-  for (const tab of tabs) {
-    tab.addEventListener('click', () => select(tab, false));
-    tab.addEventListener('keydown', (event) => {
-      const index = tabs.indexOf(tab);
-      const next = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: tabs.length - 1 }[event.key];
-      if (next === undefined) return;
-      event.preventDefault();
-      select(tabs[(next + tabs.length) % tabs.length], true);
-    });
-  }
-}
-
 const menus = [...document.querySelectorAll('.menu')];
 
 function closeMenu(menu, focusButton) {
@@ -178,12 +141,21 @@ if (document.body.dataset.markdown) loadMarkdown().catch(() => {});
 
 const links = new Map([...document.querySelectorAll('.toc a[href^="#"]')].map((link) => [link.hash.slice(1), link]));
 
+const current = document.querySelector('[data-toc-current]');
+const mobileToc = document.querySelector('.toc-mobile');
+
+for (const link of document.querySelectorAll('.toc-mobile a')) {
+  link.addEventListener('click', () => { mobileToc.open = false; });
+}
+
 if (links.size > 0) {
   const observer = new IntersectionObserver((entries) => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       for (const link of links.values()) link.classList.remove('active');
-      links.get(entry.target.id)?.classList.add('active');
+      const link = links.get(entry.target.id);
+      link?.classList.add('active');
+      if (link && current) current.textContent = link.textContent;
     }
   }, { rootMargin: '0px 0px -70% 0px' });
 

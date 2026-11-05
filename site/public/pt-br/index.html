@@ -135,38 +135,65 @@
     </section>
 
     <section class="section desk" aria-labelledby="validation">
-      <div class="intro">
-        <h2 id="validation">Falha onde a Meta falha.</h2>
-        <p>Os envios de template são conferidos contra o template salvo. Um envio errado recebe o erro da Meta e fica na caixa de entrada, marcado, com o motivo em palavras simples.</p>
+      <div class="section-intro">
+        <div class="intro">
+          <h2 id="validation">Falha onde a Meta falha, e diz por quê.</h2>
+          <p>Um envio errado recebe o erro da Meta, então o tratamento de erro do seu app roda de verdade. A mensagem fica na caixa de entrada, marcada, com o motivo em palavras simples.</p>
+        </div>
+        <a class="more" href="/pt-br/docs/#codigos-de-erro">Ver todas as verificações na documentação</a>
       </div>
-      <div class="pair">
-        <ul class="codes" role="tablist" aria-orientation="vertical" aria-label="Códigos de erro que o wapit confere">
-          <li role="presentation"><button type="button" role="tab" id="tab-132000" data-code="132000" aria-selected="true" aria-controls="error-panel" tabindex="0"><code>132000</code><span>A quantidade de parâmetros não bate com o template</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-132001" data-code="132001" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132001</code><span>O nome ou o idioma do template não existe</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-132005" data-code="132005" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132005</code><span>Texto longo demais depois de preencher as variáveis</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-132012" data-code="132012" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132012</code><span>O formato do cabeçalho não bate com o template</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-132015" data-code="132015" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132015</code><span>Template pausado, ou desativado (132016)</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-132018" data-code="132018" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132018</code><span>Quebras de linha ou muitos espaços seguidos num parâmetro</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-131009" data-code="131009" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>131009</code><span>O índice ou o tipo do botão não bate</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-131047" data-code="131047" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>131047</code><span>Mensagem livre fora da janela de 24 horas</span></button></li>
-        </ul>
-        <figure class="code-panel" id="error-panel" role="tabpanel" aria-labelledby="tab-132000">
-          <figcaption><span data-error-caption>POST /v23.0/100000000000002/messages</span><span class="fail" data-error-status>400</span><span class="sr">Resposta a um envio com a quantidade errada de parâmetros</span></figcaption>
-<pre data-error-body>{
+      <div class="story">
+        <figure class="step">
+          <figcaption>O seu app envia</figcaption>
+          <div class="code-panel">
+            <p class="code-head"><span>POST /v23.0/100000000000002/messages</span></p>
+<pre>{
+  "messaging_product": "whatsapp",
+  "to": "15550001234",
+  "type": "template",
+  "template": {
+    "name": "order_ready",
+    "language": { "code": "en_US" },
+    "components": [{
+      "type": "body",
+      <mark>"parameters": [
+        { "type": "text", "text": "Mary" },
+        { "type": "text", "text": "Main Street, 120" }
+      ]</mark>
+    }]
+  }
+}</pre>
+          </div>
+        </figure>
+        <div class="steps">
+          <figure class="step">
+            <figcaption>A caixa de entrada mostra</figcaption>
+            <div class="thread">
+              <div class="thread-head"><p><strong>Mary Smith</strong><span>+1 555 000 1234 no Example Shop</span></p><span>1 rejeitada</span></div>
+              <p class="origin"><strong>order_ready</strong> en_US, 2 variáveis</p>
+              <div class="rejected">
+                <p class="rejected-title"><strong>Rejeitado com o erro 132000</strong><span>14:06</span></p>
+                <p>O Example Shop mandou 2 variáveis no corpo, e o order_ready espera 3. O app recebeu o erro e nada foi entregue.</p>
+                <p class="rejected-details">body: number of localizable_params (2) does not match the expected number of params (3)</p>
+              </div>
+            </div>
+          </figure>
+          <figure class="step">
+            <figcaption>O seu app recebe de volta</figcaption>
+            <div class="code-panel">
+              <p class="code-head"><span>HTTP/1.1 400 Bad Request</span></p>
+<pre>{
   "error": {
-    "message": "(#132000) Number of parameters does not
-      match the expected number of params",
+    "message": "(#132000) Number of parameters
+      does not match the expected number of params",
     "type": "OAuthException",
     <mark>"code": 132000,</mark>
-    "error_data": {
-      "messaging_product": "whatsapp",
-      "details": "body: number of localizable_params (2)
-        does not match the expected number of params (3)"
-    },
     "fbtrace_id": "A3kQ8x…"
   }
 }</pre>
-        </figure>
+            </div>
+          </figure>
+        </div>
       </div>
     </section>
 

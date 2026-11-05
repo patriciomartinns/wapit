@@ -135,38 +135,65 @@
     </section>
 
     <section class="section desk" aria-labelledby="validation">
-      <div class="intro">
-        <h2 id="validation">Fails where Meta fails.</h2>
-        <p>Template sends are checked against the stored template. A bad send gets Meta's error back, and stays in the inbox flagged, with the reason in plain words.</p>
+      <div class="section-intro">
+        <div class="intro">
+          <h2 id="validation">Fails where Meta fails, and tells you why.</h2>
+          <p>A bad send gets Meta's error back, so your error handling runs for real. The message stays in the inbox, flagged, with the reason in plain words.</p>
+        </div>
+        <a class="more" href="/docs/#error-codes">See every check in the docs</a>
       </div>
-      <div class="pair">
-        <ul class="codes" role="tablist" aria-orientation="vertical" aria-label="Error codes wapit checks">
-          <li role="presentation"><button type="button" role="tab" id="tab-132000" data-code="132000" aria-selected="true" aria-controls="error-panel" tabindex="0"><code>132000</code><span>Parameter count does not match the template</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-132001" data-code="132001" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132001</code><span>Template name or language does not exist</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-132005" data-code="132005" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132005</code><span>Text too long after the variables are filled in</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-132012" data-code="132012" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132012</code><span>Header format does not match the template</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-132015" data-code="132015" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132015</code><span>Template is paused, or disabled (132016)</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-132018" data-code="132018" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>132018</code><span>Line breaks or long runs of spaces in a parameter</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-131009" data-code="131009" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>131009</code><span>Button index or type does not match</span></button></li>
-          <li role="presentation"><button type="button" role="tab" id="tab-131047" data-code="131047" aria-selected="false" aria-controls="error-panel" tabindex="-1"><code>131047</code><span>Free-form message outside the 24-hour window</span></button></li>
-        </ul>
-        <figure class="code-panel" id="error-panel" role="tabpanel" aria-labelledby="tab-132000">
-          <figcaption><span data-error-caption>POST /v23.0/100000000000002/messages</span><span class="fail" data-error-status>400</span><span class="sr">Response to a send with the wrong parameter count</span></figcaption>
-<pre data-error-body>{
+      <div class="story">
+        <figure class="step">
+          <figcaption>Your app sends</figcaption>
+          <div class="code-panel">
+            <p class="code-head"><span>POST /v23.0/100000000000002/messages</span></p>
+<pre>{
+  "messaging_product": "whatsapp",
+  "to": "15550001234",
+  "type": "template",
+  "template": {
+    "name": "order_ready",
+    "language": { "code": "en_US" },
+    "components": [{
+      "type": "body",
+      <mark>"parameters": [
+        { "type": "text", "text": "Mary" },
+        { "type": "text", "text": "Main Street, 120" }
+      ]</mark>
+    }]
+  }
+}</pre>
+          </div>
+        </figure>
+        <div class="steps">
+          <figure class="step">
+            <figcaption>The inbox shows</figcaption>
+            <div class="thread">
+              <div class="thread-head"><p><strong>Mary Smith</strong><span>+1 555 000 1234 in Example Shop</span></p><span>1 rejected</span></div>
+              <p class="origin"><strong>order_ready</strong> en_US, 2 variables</p>
+              <div class="rejected">
+                <p class="rejected-title"><strong>Rejected with error 132000</strong><span>14:06</span></p>
+                <p>Example Shop sent 2 variables in the body, and order_ready expects 3. The app got the error and nothing was delivered.</p>
+                <p class="rejected-details">body: number of localizable_params (2) does not match the expected number of params (3)</p>
+              </div>
+            </div>
+          </figure>
+          <figure class="step">
+            <figcaption>Your app gets back</figcaption>
+            <div class="code-panel">
+              <p class="code-head"><span>HTTP/1.1 400 Bad Request</span></p>
+<pre>{
   "error": {
-    "message": "(#132000) Number of parameters does not
-      match the expected number of params",
+    "message": "(#132000) Number of parameters
+      does not match the expected number of params",
     "type": "OAuthException",
     <mark>"code": 132000,</mark>
-    "error_data": {
-      "messaging_product": "whatsapp",
-      "details": "body: number of localizable_params (2)
-        does not match the expected number of params (3)"
-    },
     "fbtrace_id": "A3kQ8x…"
   }
 }</pre>
-        </figure>
+            </div>
+          </figure>
+        </div>
       </div>
     </section>
 
