@@ -553,17 +553,6 @@ impl Inbox {
             )));
         }
 
-        let priced = match status {
-            MessageStatus::Sent => true,
-            MessageStatus::Delivered | MessageStatus::Read => !self
-                .store
-                .statuses(std::slice::from_ref(&message.id))?
-                .iter()
-                .any(|event| {
-                    matches!(event.status, MessageStatus::Delivered | MessageStatus::Read)
-                }),
-            _ => false,
-        };
         let error = reason.map(|reason| {
             json!({
                 "code": reason.code,
@@ -575,15 +564,15 @@ impl Inbox {
         });
         let at = self.clock.now_ms();
 
-        if !self
+        let Some(priced) = self
             .store
             .record_status(&message.id, status, error.as_ref(), at)?
-        {
+        else {
             return Err(InboxError::NotFound(Problem::new(
                 "message_not_found",
                 "Sent message not found",
             )));
-        }
+        };
 
         self.changed_conversation(&app.id, &message.contact);
 

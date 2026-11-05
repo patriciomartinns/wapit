@@ -231,14 +231,16 @@ impl Store {
             .collect()
     }
 
-    /// Records the status event and moves the message forward. Returns `false` when the message no longer exists.
+    /// Records the status event and moves the message forward. Returns `None` when the message no longer exists,
+    /// otherwise whether this status carries the message's pricing, decided under the same lock as the insert so
+    /// two statuses fired at once never both carry it.
     pub fn record_status(
         &self,
         id: &str,
         status: &MessageStatus,
         error: Option<&Value>,
         at: i64,
-    ) -> Result<bool, StoreError> {
+    ) -> Result<Option<bool>, StoreError> {
         let mut db = self.db();
         let transaction = db.transaction()?;
 
@@ -249,7 +251,20 @@ impl Store {
             .optional()?;
 
         let Some(current) = current else {
-            return Ok(false);
+            return Ok(None);
+        };
+
+        let peers = status.pricing_peers();
+        let priced = !peers.is_empty() && {
+            let mut statement =
+                transaction.prepare("SELECT status FROM statuses WHERE message_id = ?1")?;
+            let earlier: Vec<String> = statement
+                .query_map([id], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+
+            !earlier
+                .iter()
+                .any(|earlier| peers.contains(&MessageStatus::parse(earlier)))
         };
 
         if status.rank() >= MessageStatus::parse(&current).rank() {
@@ -265,7 +280,7 @@ impl Store {
         )?;
         transaction.commit()?;
 
-        Ok(true)
+        Ok(Some(priced))
     }
 
     pub fn set_inbound_status(&self, id: &str, status: &MessageStatus) -> Result<(), StoreError> {
@@ -708,6 +723,56 @@ mod tests {
         assert_eq!(
             store.contact_name("a", "15550000000").unwrap().as_deref(),
             Some("Mary")
+        );
+    }
+
+    #[test]
+    fn only_one_of_two_racing_statuses_carries_pricing() {
+        let data = tempfile::TempDir::new().unwrap();
+        let store =
+            Arc::new(Store::open(data.path(), Arc::new(crate::clock::SystemClock)).unwrap());
+        store
+            .record_message(&inbound("wamid.1"), None, None)
+            .unwrap();
+
+        let racing: Vec<_> = [MessageStatus::Delivered, MessageStatus::Read]
+            .into_iter()
+            .map(|status| {
+                let store = Arc::clone(&store);
+                std::thread::spawn(move || {
+                    store.record_status("wamid.1", &status, None, 2).unwrap()
+                })
+            })
+            .collect();
+        let priced: Vec<Option<bool>> = racing
+            .into_iter()
+            .map(|thread| thread.join().unwrap())
+            .collect();
+
+        assert_eq!(
+            priced
+                .iter()
+                .filter(|priced| **priced == Some(true))
+                .count(),
+            1
+        );
+        assert_eq!(
+            store
+                .record_status("wamid.1", &MessageStatus::Sent, None, 3)
+                .unwrap(),
+            Some(true)
+        );
+        assert_eq!(
+            store
+                .record_status("wamid.1", &MessageStatus::Sent, None, 4)
+                .unwrap(),
+            Some(false)
+        );
+        assert_eq!(
+            store
+                .record_status("wamid.missing", &MessageStatus::Sent, None, 5)
+                .unwrap(),
+            None
         );
     }
 

@@ -128,6 +128,16 @@ impl MessageStatus {
         )
     }
 
+    /// Meta prices a message once with `sent` and once with the first of `delivered` or `read`. A status carries
+    /// pricing when none of the statuses listed here was recorded before it.
+    pub fn pricing_peers(&self) -> &'static [Self] {
+        match self {
+            Self::Sent => &[Self::Sent],
+            Self::Delivered | Self::Read => &[Self::Delivered, Self::Read],
+            _ => &[],
+        }
+    }
+
     /// Statuses an app may list in `auto_statuses`, fired in order after each accepted send.
     pub fn automatic(&self) -> bool {
         matches!(self, Self::Sent | Self::Delivered | Self::Read)
