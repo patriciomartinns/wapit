@@ -22,26 +22,33 @@ showTheme();
 
 const sections = document.querySelectorAll('.section, .content > :nth-child(n+5)');
 
-if (sections.length > 0 && 'IntersectionObserver' in window) {
+const firstDelay = document.querySelector('.content') ? 200 : 320;
+
+if ('IntersectionObserver' in window) {
   const reveal = new IntersectionObserver((entries) => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
       entry.target.classList.add('shown');
       reveal.unobserve(entry.target);
     }
-  }, { rootMargin: '0px 0px -12% 0px' });
+  }, { rootMargin: '0px 0px -8% 0px' });
 
+  const visible = [];
   for (const section of sections) {
-    const visible = section.getBoundingClientRect().top < innerHeight;
-    section.classList.add('reveal');
-    if (visible) section.classList.add('shown', 'instant');
+    if (section.getBoundingClientRect().top < innerHeight) visible.push(section);
     else reveal.observe(section);
   }
-  document.documentElement.classList.add('js');
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    for (const section of document.querySelectorAll('.reveal.instant')) section.classList.remove('instant');
-  }));
+  requestAnimationFrame(() => {
+    visible.forEach((section, order) => {
+      section.style.setProperty('--delay', `${firstDelay + Math.min(order, 8) * 60}ms`);
+      section.classList.add('shown');
+    });
+  });
+} else {
+  for (const section of sections) section.classList.add('shown');
 }
+
+document.documentElement.classList.add('ready');
 
 const copied ={ en: 'Copied', 'pt-BR': 'Copiado' }[document.documentElement.lang] ?? 'Copied';
 

@@ -470,31 +470,23 @@ code, pre, kbd { font-family: var(--font-mono); }
   .toc > :nth-child(10) { animation-delay: 280ms; }
   .toc > :nth-child(n+11) { animation-delay: 310ms; }
 
-  .js .reveal { opacity: 0; transform: translateY(24px); }
-  .js .content > .reveal { transform: translateY(12px); }
-  .js .content > .reveal.shown { transition-duration: 520ms; }
-  .js .reveal.shown .table tr { animation: rise 420ms var(--ease-out) both; }
-  .js .reveal.shown .table tr:nth-child(2) { animation-delay: 30ms; }
-  .js .reveal.shown .table tr:nth-child(3) { animation-delay: 60ms; }
-  .js .reveal.shown .table tr:nth-child(4) { animation-delay: 90ms; }
-  .js .reveal.shown .table tr:nth-child(5) { animation-delay: 120ms; }
-  .js .reveal.shown .table tr:nth-child(6) { animation-delay: 150ms; }
-  .js .reveal.shown .table tr:nth-child(n+7) { animation-delay: 180ms; }
-  .js .reveal.shown {
+  .js :is(.section, .content > :nth-child(n+5)) { opacity: 0; transform: translateY(24px); }
+  .js .content > :nth-child(n+5) { transform: translateY(12px); }
+  .js:not(.ready) :is(.section, .content > :nth-child(n+5)) { animation: settle 0s 2.5s forwards; }
+  .js :is(.section, .content > :nth-child(n+5)).shown {
     opacity: 1;
     transform: none;
-    transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out);
+    transition: opacity 700ms var(--ease-out) var(--delay, 0ms), transform 700ms var(--ease-out) var(--delay, 0ms);
   }
-  .js .reveal.shown .codes li,
-  .js .reveal.shown .card { animation: rise 520ms var(--ease-out) both; }
-  .js .reveal.shown .codes li:nth-child(2), .js .reveal.shown .card:nth-child(2) { animation-delay: 50ms; }
-  .js .reveal.shown .codes li:nth-child(3), .js .reveal.shown .card:nth-child(3) { animation-delay: 100ms; }
-  .js .reveal.shown .codes li:nth-child(4) { animation-delay: 150ms; }
-  .js .reveal.shown .codes li:nth-child(5) { animation-delay: 200ms; }
-  .js .reveal.shown .codes li:nth-child(6) { animation-delay: 250ms; }
-  .js .reveal.shown .codes li:nth-child(7) { animation-delay: 300ms; }
-  .js .reveal.shown .codes li:nth-child(8) { animation-delay: 350ms; }
-  .js .reveal.instant, .js .reveal.instant * { transition: none !important; animation: none !important; }
+  .js .content > .shown { transition-duration: 520ms; }
+  .js .shown :is(.codes li, .card, .table tr) { animation: rise 480ms var(--ease-out) both; animation-delay: calc(var(--delay, 0ms) + var(--item, 0ms)); }
+  .js .shown :is(.codes li, .card, .table tr):nth-child(2) { --item: 40ms; }
+  .js .shown :is(.codes li, .card, .table tr):nth-child(3) { --item: 80ms; }
+  .js .shown :is(.codes li, .card, .table tr):nth-child(4) { --item: 120ms; }
+  .js .shown :is(.codes li, .card, .table tr):nth-child(5) { --item: 160ms; }
+  .js .shown :is(.codes li, .card, .table tr):nth-child(6) { --item: 200ms; }
+  .js .shown :is(.codes li, .card, .table tr):nth-child(7) { --item: 240ms; }
+  .js .shown :is(.codes li, .card, .table tr):nth-child(n+8) { --item: 280ms; }
 }
 
 @keyframes rise {
@@ -504,6 +496,10 @@ code, pre, kbd { font-family: var(--font-mono); }
 
 @keyframes lift {
   from { opacity: 0; transform: translateY(40px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes settle {
   to { opacity: 1; transform: none; }
 }
 
