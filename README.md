@@ -1,6 +1,25 @@
-# wapit
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <img src="docs/logo-light.svg" width="96" height="96" alt="wapit">
+  </picture>
+</p>
 
-A local WhatsApp Cloud API for development: Mailpit, but for WhatsApp.
+<h1 align="center">wapit</h1>
+
+<p align="center">A local WhatsApp Cloud API for development: Mailpit, but for WhatsApp.</p>
+
+<p align="center">
+  <a href="https://github.com/patriciomartinns/wapit/actions/workflows/ci.yml"><img src="https://github.com/patriciomartinns/wapit/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/patriciomartinns/wapit/releases/latest"><img src="https://img.shields.io/github/v/release/patriciomartinns/wapit?sort=semver&label=release" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/patriciomartinns/wapit" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/rust-1.89%2B-orange?logo=rust" alt="Rust 1.89 or newer">
+</p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/inbox-dark.png">
+  <img src="docs/inbox-light.png" alt="The wapit inbox showing a template message with buttons, a reply-button tap and the webhook deliveries to the app">
+</picture>
 
 Point your app's Graph API base URL at wapit and every message it sends shows up in an inbox that looks like a WhatsApp chat. wapit checks each send the way Meta does, answers with Meta's error codes, and lets you reply as the user: type a message, attach a file, tap a button, or mark a message delivered, read or failed. Each action reaches your app as a webhook signed with your app secret.
 
@@ -138,3 +157,10 @@ Bug reports and feature requests are welcome as issues. Pull requests are not ac
 ## License
 
 [MIT](LICENSE). The bundled Geist fonts are under the [SIL Open Font License](public/fonts/OFL.txt).
+
+## Made by
+
+<a href="https://github.com/patriciomartinns"><img src="https://github.com/patriciomartinns.png?size=96" width="48" height="48" alt="Patrício Martins" align="left"></a>
+
+**Patrício Martins**<br>
+[@patriciomartinns](https://github.com/patriciomartinns)
