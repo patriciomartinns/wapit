@@ -3,6 +3,7 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::config::{ConfigStore, Template};
+use crate::templates;
 
 const REAL_GRAPH: &str = "https://graph.facebook.com";
 const PLACEHOLDER_WABA: &str = "REAL_WABA_ID";
@@ -107,10 +108,8 @@ pub async fn run(config: &ConfigStore, app_id: &str) -> Result<String, String> {
         .iter()
         .filter(|template| template.status == "APPROVED")
         .count();
-    config.edit_templates(&app.id, |all| -> Result<(), String> {
-        *all = templates;
-        Ok(())
-    })?;
+    templates::replace_all(config, &app.id, templates)
+        .map_err(|error| error.details.clone().unwrap_or_else(|| error.to_string()))?;
 
     Ok(format!(
         "{count} templates ({approved_count} approved) written to {}",

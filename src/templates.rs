@@ -1,7 +1,9 @@
 use rand::RngExt;
 use serde_json::Value;
 
-use crate::config::{Template, TemplateComponent};
+use serde_json::json;
+
+use crate::config::{ConfigStore, Template, TemplateComponent};
 use crate::graph_error::GraphError;
 
 const CATEGORIES: &[&str] = &["AUTHENTICATION", "MARKETING", "UTILITY"];
@@ -130,7 +132,7 @@ fn components(input: &Value) -> Result<Vec<TemplateComponent>, GraphError> {
 
 /// Builds a template from a `POST /{waba_id}/message_templates` body. Local templates are approved right away,
 /// so the app can send them without a review step.
-pub fn create(existing: &[Template], input: &Value) -> Result<Template, GraphError> {
+fn build(existing: &[Template], input: &Value) -> Result<Template, GraphError> {
     let name = input
         .get("name")
         .and_then(Value::as_str)
@@ -202,7 +204,7 @@ pub fn create(existing: &[Template], input: &Value) -> Result<Template, GraphErr
 }
 
 /// Applies a `POST /{template_id}` edit, which may change the components and the category.
-pub fn edit(template: &mut Template, input: &Value) -> Result<(), GraphError> {
+fn apply_edit(template: &mut Template, input: &Value) -> Result<(), GraphError> {
     if input.get("components").is_none() && input.get("category").is_none() {
         return Err(invalid(
             "Provide components or category to edit the template",
@@ -218,4 +220,79 @@ pub fn edit(template: &mut Template, input: &Value) -> Result<(), GraphError> {
     }
 
     Ok(())
+}
+
+/// The app's templates in file order, as `GET /{waba_id}/message_templates` lists them.
+pub fn list(config: &ConfigStore, app_id: &str, name: Option<&str>) -> Vec<Template> {
+    config
+        .templates_for(app_id)
+        .iter()
+        .filter(|template| name.is_none_or(|name| template.name == name))
+        .cloned()
+        .collect()
+}
+
+/// Creates a template at the end of the file and answers like Meta: its id, status and category.
+pub fn create(config: &ConfigStore, app_id: &str, input: &Value) -> Result<Value, GraphError> {
+    config.edit_templates(app_id, |all| {
+        let template = build(all, input)?;
+        let response =
+            json!({ "id": template.id, "status": template.status, "category": template.category });
+        all.push(template);
+        Ok(response)
+    })
+}
+
+pub fn edit(
+    config: &ConfigStore,
+    app_id: &str,
+    template_id: &str,
+    input: &Value,
+) -> Result<(), GraphError> {
+    config.edit_templates(app_id, |all| {
+        let template = all
+            .iter_mut()
+            .find(|template| template.id.as_deref() == Some(template_id))
+            .ok_or_else(|| GraphError::unsupported("POST", template_id))?;
+        apply_edit(template, input)
+    })
+}
+
+/// Deletes every language of the named template, or only the one whose id is `hsm_id`.
+pub fn delete(
+    config: &ConfigStore,
+    app_id: &str,
+    name: Option<&str>,
+    hsm_id: Option<&str>,
+) -> Result<(), GraphError> {
+    let name = name
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| GraphError::required("name"))?;
+
+    config.edit_templates(app_id, |all| {
+        let before = all.len();
+        all.retain(|template| {
+            !(template.name == name && hsm_id.is_none_or(|id| template.id.as_deref() == Some(id)))
+        });
+
+        if all.len() == before {
+            return Err(GraphError::invalid_parameter(format!(
+                "Message template \"{name}\" was not found"
+            )));
+        }
+
+        Ok(())
+    })
+}
+
+/// Replaces the app's templates with the ones `wapit sync` read from Meta.
+pub fn replace_all(
+    config: &ConfigStore,
+    app_id: &str,
+    templates: Vec<Template>,
+) -> Result<(), GraphError> {
+    config.edit_templates(app_id, |all| {
+        *all = templates;
+        Ok(())
+    })
 }

@@ -7,12 +7,13 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 
-use crate::config::{App, ConfigStore, SaveError, Template};
+use crate::config::{App, ConfigStore, Template};
 use crate::graph_error::GraphError;
 use crate::model::{
     Button, Direction, Media, MediaRef, Message, Rendered, TemplateRef, Webhook, digits, now_ms,
 };
 use crate::store::{Store, StoreError};
+use crate::templates;
 use crate::validate::{
     DEFAULT_MESSAGE_TYPE, OutboundContext, SERVICE_WINDOW_MS, validate_outbound,
 };
@@ -817,20 +818,39 @@ impl Inbox {
         self.require_app(app_id).map(|_| ())
     }
 
-    pub fn templates_for(&self, app_id: &str) -> Arc<Vec<Template>> {
-        self.config.templates_for(app_id)
+    pub fn list_templates(&self, app: &App, name: Option<&str>) -> Vec<Template> {
+        templates::list(&self.config, &app.id, name)
     }
 
-    /// Changes an app's templates file and tells the inbox, whose template counts depend on it.
-    pub fn edit_templates<T, E: From<SaveError>>(
-        &self,
-        app_id: &str,
-        edit: impl FnOnce(&mut Vec<Template>) -> Result<T, E>,
-    ) -> Result<T, E> {
-        let result = self.config.edit_templates(app_id, edit)?;
-        self.changed(Change::of(app_id, None));
+    pub fn create_template(&self, app: &App, input: &Value) -> Result<Value, InboxError> {
+        let created = templates::create(&self.config, &app.id, input)?;
+        self.changed(Change::of(&app.id, None));
 
-        Ok(result)
+        Ok(created)
+    }
+
+    pub fn edit_template(
+        &self,
+        app: &App,
+        template_id: &str,
+        input: &Value,
+    ) -> Result<(), InboxError> {
+        templates::edit(&self.config, &app.id, template_id, input)?;
+        self.changed(Change::of(&app.id, None));
+
+        Ok(())
+    }
+
+    pub fn delete_template(
+        &self,
+        app: &App,
+        name: Option<&str>,
+        hsm_id: Option<&str>,
+    ) -> Result<(), InboxError> {
+        templates::delete(&self.config, &app.id, name, hsm_id)?;
+        self.changed(Change::of(&app.id, None));
+
+        Ok(())
     }
 
     /// The apps and their template counts logged at startup, or the configuration error that stops them loading.

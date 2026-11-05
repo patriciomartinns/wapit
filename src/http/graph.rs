@@ -13,7 +13,6 @@ use super::content_disposition;
 use crate::config::App;
 use crate::graph_error::GraphError;
 use crate::inbox::{Inbox, InboxError};
-use crate::templates;
 
 static VERSION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^v\d+\.\d+$").expect("valid regex"));
@@ -172,28 +171,38 @@ async fn route(state: &GraphState, request: Request) -> Result<Response, InboxEr
     match (&method, edge, segments.len()) {
         (&Method::POST, Some("messages"), 2) => post_message(&state.inbox, &app, &id, &body),
         (&Method::GET, None, 1) => get_object(state, &app, &id, &query),
-        (&Method::POST, None, 1) => edit_template(&state.inbox, &app, &id, &body),
+        (&Method::POST, None, 1) => {
+            state
+                .inbox
+                .edit_template(&app, &id, &template_input(&body)?)?;
+            Ok(json(StatusCode::OK, json!({ "success": true })))
+        }
         (&Method::DELETE, None, 1) => {
             state.inbox.delete_media(&app, &id).await?;
             Ok(json(StatusCode::OK, json!({ "success": true })))
         }
         (&Method::GET, _, _) if templates_of_app => {
-            let name = query.get("name");
-            let templates: Vec<_> = state
+            let templates = state
                 .inbox
-                .templates_for(&app.id)
-                .iter()
-                .filter(|template| name.is_none_or(|name| &template.name == name))
-                .cloned()
-                .collect();
+                .list_templates(&app, query.get("name").map(String::as_str));
 
             Ok(json(
                 StatusCode::OK,
                 json!({ "data": templates, "paging": { "cursors": { "before": "MAZDZD", "after": "MjQZD" } } }),
             ))
         }
-        (&Method::POST, _, _) if templates_of_app => create_template(&state.inbox, &app, &body),
-        (&Method::DELETE, _, _) if templates_of_app => delete_template(&state.inbox, &app, &query),
+        (&Method::POST, _, _) if templates_of_app => Ok(json(
+            StatusCode::OK,
+            state.inbox.create_template(&app, &template_input(&body)?)?,
+        )),
+        (&Method::DELETE, _, _) if templates_of_app => {
+            state.inbox.delete_template(
+                &app,
+                query.get("name").map(String::as_str),
+                query.get("hsm_id").map(String::as_str),
+            )?;
+            Ok(json(StatusCode::OK, json!({ "success": true })))
+        }
         _ => Err(GraphError::unsupported(method.as_str(), &id).into()),
     }
 }
@@ -244,67 +253,6 @@ async fn upload_media(
 
 fn template_input(body: &Bytes) -> Result<Value, GraphError> {
     parse_body(body).map(|value| if value.is_object() { value } else { json!({}) })
-}
-
-fn create_template(inbox: &Inbox, app: &App, body: &Bytes) -> Result<Response, InboxError> {
-    let input = template_input(body)?;
-    let response = inbox.edit_templates(&app.id, |all| -> Result<Value, GraphError> {
-        let template = templates::create(all, &input)?;
-        let response =
-            json!({ "id": template.id, "status": template.status, "category": template.category });
-        all.push(template);
-        Ok(response)
-    })?;
-
-    Ok(json(StatusCode::OK, response))
-}
-
-fn edit_template(
-    inbox: &Inbox,
-    app: &App,
-    template_id: &str,
-    body: &Bytes,
-) -> Result<Response, InboxError> {
-    let input = template_input(body)?;
-
-    inbox.edit_templates(&app.id, |all| -> Result<(), GraphError> {
-        let template = all
-            .iter_mut()
-            .find(|template| template.id.as_deref() == Some(template_id))
-            .ok_or_else(|| GraphError::unsupported("POST", template_id))?;
-        templates::edit(template, &input)
-    })?;
-
-    Ok(json(StatusCode::OK, json!({ "success": true })))
-}
-
-fn delete_template(
-    inbox: &Inbox,
-    app: &App,
-    query: &HashMap<String, String>,
-) -> Result<Response, InboxError> {
-    let name = query
-        .get("name")
-        .filter(|name| !name.is_empty())
-        .ok_or_else(|| GraphError::required("name"))?;
-    let hsm_id = query.get("hsm_id");
-
-    inbox.edit_templates(&app.id, |all| -> Result<(), GraphError> {
-        let before = all.len();
-        all.retain(|template| {
-            !(&template.name == name && hsm_id.is_none_or(|id| template.id.as_ref() == Some(id)))
-        });
-
-        if all.len() == before {
-            return Err(GraphError::invalid_parameter(format!(
-                "Message template \"{name}\" was not found"
-            )));
-        }
-
-        Ok(())
-    })?;
-
-    Ok(json(StatusCode::OK, json!({ "success": true })))
 }
 
 /// Server-side SDKs send neither `Origin` nor a cross-site `Sec-Fetch-Site`. A browser does, even for no-cors

@@ -8,8 +8,9 @@ A local WhatsApp Cloud API mock and inbox, shipped as one Rust binary. README.md
 - `src/http/ui.rs`: the inbox API and static files on port 8026. `public/` is embedded in the binary with `rust-embed`.
 - `src/http/mod.rs`: the `Host` allowlist both servers sit behind.
 - `src/validate.rs`: outbound payload validation and template rendering. Each rule mirrors a documented Meta error code; keep the code and message text identical to Meta's.
-- `src/templates.rs`: template create and edit through the Graph API.
-- `src/inbox.rs`: the service the handlers call: sends, statuses, user actions, media, webhooks, change events.
+- `src/templates.rs`: the one owner of an app's templates: list, create, edit, delete and the `wapit sync` replace, over `ConfigStore`.
+- `src/inbox.rs`: the service the handlers call: sends, statuses, user actions, media, webhooks, templates and the read views. Its store and config are private, and only it emits change events.
+- `src/views.rs`: the typed read views and change events the inbox page reads.
 - `src/webhooks.rs`: payload envelopes, `X-Hub-Signature-256` signing and delivery.
 - `src/store.rs`: SQLite. Schema changes are new entries in `MIGRATIONS`; never edit a shipped migration.
 - `src/config.rs`: `apps.json` and `templates/*.json`, reloaded on change, last good version kept on errors.
