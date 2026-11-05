@@ -173,6 +173,18 @@ function page(locale, doc) {
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/site.css">
+  <link rel="alternate" hreflang="x-default" href="${origin}/docs/">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="wapit">
+  <meta property="og:locale" content="${lang === 'en' ? 'en_US' : 'pt_BR'}">
+  <meta property="og:title" content="${text.title} · wapit">
+  <meta property="og:description" content="${text.description}">
+  <meta property="og:url" content="${origin}${prefix}/docs/">
+  <meta property="og:image" content="${origin}/${lang === 'en' ? 'og.png' : 'og-pt-br.png'}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#ffffff">
 </head>
 <body data-markdown="${markdownUrl}">
   <a class="skip" href="#main">${text.skip}</a>

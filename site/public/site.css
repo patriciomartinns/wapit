@@ -178,15 +178,19 @@ code, pre, kbd { font-family: var(--font-mono); }
 .copy {
   appearance: none;
   border: 0;
+  flex-shrink: 0;
+  min-width: 76px;
   margin-left: 8px;
   padding: 8px 12px;
   border-radius: 6px;
   background: transparent;
   color: var(--night-400);
   font: 500 13px var(--font-sans);
+  text-align: center;
   cursor: pointer;
 }
 .copy:hover { color: var(--paper-white); background: var(--night-700); }
+.copy[data-state="copied"] { color: var(--color-action); }
 
 .button {
   display: inline-flex;
@@ -359,6 +363,69 @@ code, pre, kbd { font-family: var(--font-mono); }
   .docs { padding-top: 40px; }
 }
 
+.md-button { min-width: 0; }
+.section-head .md-button { min-width: 84px; justify-content: center; }
+
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
+
+  .button, .md-button, .copy, .locale a, .toc a, .card, .nav a {
+    transition-property: background-color, color, box-shadow, transform, opacity;
+    transition-duration: 160ms;
+    transition-timing-function: var(--ease-out);
+  }
+  .button:active, .md-button:active, .copy:active { transform: scale(0.97); }
+  .card:hover { box-shadow: inset 0 0 0 1px var(--color-ink); }
+  .codes li { transition: background-color 160ms var(--ease-out); }
+  .codes li:hover { background: var(--color-desk); }
+
+  .copy[data-state="copied"] .label,
+  .md-button[data-state="copied"] .label { animation: confirm 260ms var(--ease-out); }
+
+  .hero > * { animation: rise 640ms var(--ease-out) both; }
+  .hero > :nth-child(2) { animation-delay: 60ms; }
+  .hero > :nth-child(3) { animation-delay: 120ms; }
+  .hero > :nth-child(4) { animation-delay: 180ms; }
+  .hero > :nth-child(5) { animation-delay: 240ms; }
+  .showcase img { animation: lift 900ms var(--ease-out) 260ms both; }
+  .content > :nth-child(-n+4) { animation: rise 560ms var(--ease-out) both; }
+  .content > :nth-child(2) { animation-delay: 50ms; }
+  .content > :nth-child(3) { animation-delay: 100ms; }
+  .content > :nth-child(4) { animation-delay: 150ms; }
+
+  .js .reveal { opacity: 0; transform: translateY(24px); }
+  .js .reveal.shown {
+    opacity: 1;
+    transform: none;
+    transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out);
+  }
+  .js .reveal.shown .codes li,
+  .js .reveal.shown .card { animation: rise 520ms var(--ease-out) both; }
+  .js .reveal.shown .codes li:nth-child(2), .js .reveal.shown .card:nth-child(2) { animation-delay: 50ms; }
+  .js .reveal.shown .codes li:nth-child(3), .js .reveal.shown .card:nth-child(3) { animation-delay: 100ms; }
+  .js .reveal.shown .codes li:nth-child(4) { animation-delay: 150ms; }
+  .js .reveal.shown .codes li:nth-child(5) { animation-delay: 200ms; }
+  .js .reveal.shown .codes li:nth-child(6) { animation-delay: 250ms; }
+  .js .reveal.shown .codes li:nth-child(7) { animation-delay: 300ms; }
+  .js .reveal.shown .codes li:nth-child(8) { animation-delay: 350ms; }
+  .js .reveal.instant, .js .reveal.instant * { transition: none !important; animation: none !important; }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes lift {
+  from { opacity: 0; transform: translateY(40px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes confirm {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
 }

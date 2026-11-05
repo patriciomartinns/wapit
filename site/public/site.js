@@ -1,4 +1,27 @@
-const copied = { en: 'Copied', 'pt-BR': 'Copiado' }[document.documentElement.lang] ?? 'Copied';
+const sections = document.querySelectorAll('.section');
+
+if (sections.length > 0 && 'IntersectionObserver' in window) {
+  const reveal = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      entry.target.classList.add('shown');
+      reveal.unobserve(entry.target);
+    }
+  }, { rootMargin: '0px 0px -12% 0px' });
+
+  for (const section of sections) {
+    const visible = section.getBoundingClientRect().top < innerHeight;
+    section.classList.add('reveal');
+    if (visible) section.classList.add('shown', 'instant');
+    else reveal.observe(section);
+  }
+  document.documentElement.classList.add('js');
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    for (const section of document.querySelectorAll('.reveal.instant')) section.classList.remove('instant');
+  }));
+}
+
+const copied ={ en: 'Copied', 'pt-BR': 'Copiado' }[document.documentElement.lang] ?? 'Copied';
 
 function confirm(button) {
   const label = button.querySelector('.label') ?? button;
