@@ -1177,6 +1177,50 @@ async fn phone_number_webhooks_carry_the_number_and_a_stable_user_id() {
 }
 
 #[tokio::test]
+async fn a_reply_to_the_received_user_id_stays_in_the_phone_conversation() {
+    let harness = harness().await;
+    let before = harness.received_count();
+    harness
+        .ui_post(
+            "/api/conversations/a/5585999990000/messages",
+            &json!({ "kind": "text", "text": "Oi", "name": "Ana" }),
+        )
+        .await;
+    let user_id = value_of(&harness.webhook_after(before).await)["messages"][0]["from_user_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let reply = json!({ "messaging_product": "whatsapp", "recipient": user_id, "type": "text", "text": { "body": "Olá" } });
+
+    let (status, sent) = harness.post("/v26.0/100/messages", &reply, "token-a").await;
+    let message_id = sent["messages"][0]["id"].as_str().unwrap().to_owned();
+    let before = harness.received_count();
+    fire(&harness, &message_id, "delivered").await;
+    let delivered = value_of(&harness.webhook_after(before).await).clone();
+    let conversation = harness.ui_get("/api/conversations/a/5585999990000").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        sent["contacts"],
+        json!([{ "input": user_id, "user_id": user_id }])
+    );
+    assert_eq!(conversation["messages"].as_array().unwrap().len(), 2);
+    assert_eq!(conversation["messages"][1]["issues"], json!([]));
+    assert_eq!(
+        harness
+            .ui_get(&format!("/api/conversations/a/{user_id}"))
+            .await["messages"],
+        json!([])
+    );
+    assert_eq!(delivered["statuses"][0]["recipient_id"], "5585999990000");
+    assert_eq!(
+        delivered["statuses"][0]["recipient_user_id"],
+        user_id.as_str()
+    );
+    assert_eq!(delivered["contacts"][0]["wa_id"], "5585999990000");
+}
+
+#[tokio::test]
 async fn a_malformed_bsuid_recipient_is_rejected() {
     let harness = harness().await;
     let payload = json!({ "messaging_product": "whatsapp", "recipient": "13491208655302741918", "type": "text", "text": { "body": "Hi" } });

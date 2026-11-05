@@ -143,7 +143,7 @@ Template sends are checked against the stored template like Meta does: name and 
 
 ## Business-scoped user IDs
 
-Send with `recipient` set to a business-scoped user ID (BSUID), such as `US.13491208655302741918`, instead of `to`, and the response names the contact as `user_id` instead of `wa_id`. When a send has both, `to` wins, as on Meta. Webhooks have the shape Meta has used since April 2026: `contacts[].user_id`, `messages[].from_user_id` and `statuses[].recipient_user_id` are always there, and `wa_id`, `from` and `recipient_id` only in phone number conversations. wapit derives a stable BSUID for each phone number from the number and the WhatsApp Business Account id. One-tap, zero-tap and copy code authentication templates cannot be sent to a BSUID (131062). Group recipients (`recipient_type: group`) are not supported.
+Send with `recipient` set to a business-scoped user ID (BSUID), such as `US.13491208655302741918`, instead of `to`, and the response names the contact as `user_id` instead of `wa_id`. When a send has both, `to` wins, as on Meta. Webhooks have the shape Meta has used since April 2026: `contacts[].user_id`, `messages[].from_user_id` and `statuses[].recipient_user_id` are always there, and `wa_id`, `from` and `recipient_id` only in phone number conversations. wapit derives a stable BSUID for each phone number from the number and the WhatsApp Business Account id. A send whose `recipient` is that derived BSUID goes to the phone number's conversation, inside its service window. One-tap, zero-tap and copy code authentication templates cannot be sent to a BSUID (131062). Group recipients (`recipient_type: group`) are not supported.
 
 ## Acting as the user
 

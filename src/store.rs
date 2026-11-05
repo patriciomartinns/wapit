@@ -306,6 +306,14 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    pub fn contact_ids(&self, app_id: &str) -> Result<Vec<String>, StoreError> {
+        let db = self.db();
+        let mut statement = db.prepare("SELECT wa_id FROM contacts WHERE app_id = ?1")?;
+        let rows = statement.query_map([app_id], |row| row.get(0))?;
+
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     pub fn contact_name(&self, app_id: &str, wa_id: &str) -> Result<Option<String>, StoreError> {
         Ok(self
             .db()

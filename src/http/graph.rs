@@ -308,14 +308,14 @@ fn post_message(
         return Ok(json(StatusCode::OK, json!({ "success": true })));
     }
 
-    let (message, input) = inbox.send_outbound(app, payload)?;
+    let (message, input, recipient) = inbox.send_outbound(app, payload)?;
     let mut sent = json!({ "id": message.id });
 
     if message.kind == "template" {
         sent["message_status"] = json!("accepted");
     }
 
-    let contact = match Contact::parse(&message.contact) {
+    let contact = match recipient {
         Contact::Phone(number) => json!({ "input": input, "wa_id": number }),
         Contact::User(user_id) => json!({ "input": input, "user_id": user_id }),
     };

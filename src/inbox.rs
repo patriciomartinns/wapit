@@ -278,14 +278,35 @@ impl Inbox {
         })
     }
 
+    /// The conversation a recipient belongs to. A BSUID that wapit derived for a phone number, which the app
+    /// read from a webhook, leads back to that number's conversation instead of starting a new one.
+    fn conversation_key(&self, app: &App, contact: &Contact) -> Result<String, InboxError> {
+        let Contact::User(user_id) = contact else {
+            return Ok(contact.id().to_owned());
+        };
+
+        Ok(self
+            .store
+            .contact_ids(&app.id)?
+            .into_iter()
+            .find(|id| {
+                let known = Contact::parse(id);
+                known.phone_number().is_some() && known.user_id(&app.waba_id) == *user_id
+            })
+            .unwrap_or_else(|| user_id.clone()))
+    }
+
+    /// Records an app's send and returns it with the `input` the app sent and the recipient as it named it.
     pub fn send_outbound(
         self: &Arc<Self>,
         app: &Arc<App>,
         payload: Value,
-    ) -> Result<(Message, String), InboxError> {
-        let contact_hint = Contact::recipient_of(&payload)
-            .map(|(contact, _)| contact.id().to_owned())
-            .unwrap_or_default();
+    ) -> Result<(Message, String, Contact), InboxError> {
+        let recipient = Contact::recipient_of(&payload).map(|(contact, _)| contact);
+        let contact_hint = match &recipient {
+            Some(contact) => self.conversation_key(app, contact)?,
+            None => String::new(),
+        };
         let last_inbound_at = if contact_hint.is_empty() {
             None
         } else {
@@ -312,7 +333,7 @@ impl Inbox {
         let message = Message {
             id: new_message_id(),
             app_id: app.id.clone(),
-            contact: outbound.contact,
+            contact: contact_hint,
             direction: Direction::Out,
             kind: outbound.kind,
             status: MessageStatus::Accepted,
@@ -338,7 +359,9 @@ impl Inbox {
         self.changed_conversation(&app.id, &message.contact);
         self.schedule_auto_statuses(app, &message, failure);
 
-        Ok((message, outbound.input))
+        let recipient = recipient.unwrap_or_else(|| Contact::parse(&outbound.contact));
+
+        Ok((message, outbound.input, recipient))
     }
 
     fn record_rejected(
