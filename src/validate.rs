@@ -191,8 +191,8 @@ fn bind_parameters(
         let value = parameter_text(parameter, location)?;
 
         if strict_body_text && BODY_PARAMETER_SPACING.is_match(&value) {
-            return Err(GraphError::new(132_018, "(#132018) There was an issue with the parameters in your template.").details(
-                format!("{location}: param text cannot have new-line/tab characters or more than 4 consecutive spaces"),
+            return Err(GraphError::new(132_018, "(#132018) Template validation error").details(
+                format!("There was an issue with the parameters in your template. {location}: param text cannot have new-line/tab characters or more than 4 consecutive spaces"),
             ));
         }
 

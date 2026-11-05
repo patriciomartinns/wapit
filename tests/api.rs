@@ -425,13 +425,19 @@ async fn new_lines_inside_body_parameters_are_132018() {
         "order_ready",
         "en_US",
     );
+    let error = harness
+        .post("/v26.0/100/messages", &payload, "token-a")
+        .await
+        .1["error"]
+        .clone();
 
-    assert_eq!(
-        harness
-            .post("/v26.0/100/messages", &payload, "token-a")
-            .await
-            .1["error"]["code"],
-        132_018
+    assert_eq!(error["code"], 132_018);
+    assert_eq!(error["message"], "(#132018) Template validation error");
+    assert!(
+        error["error_data"]["details"]
+            .as_str()
+            .unwrap()
+            .starts_with("There was an issue with the parameters in your template.")
     );
 }
 
@@ -770,6 +776,10 @@ async fn a_failed_status_carries_a_meta_error() {
 
     assert_eq!(status["status"], "failed");
     assert_eq!(status["errors"][0]["code"], 131_047);
+    assert_eq!(
+        status["errors"][0]["href"],
+        "https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes"
+    );
 }
 
 #[tokio::test]

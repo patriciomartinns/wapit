@@ -60,6 +60,9 @@ pub const FAILURE_REASONS: &[FailureReason] = &[
     },
 ];
 
+const ERROR_CODES_URL: &str =
+    "https://developers.facebook.com/documentation/business-messaging/whatsapp/support/error-codes";
+
 const REENGAGEMENT: &FailureReason = &FAILURE_REASONS[1];
 
 /// Meta does not deliver a reaction whose target is missing, is itself a reaction or is over 30 days old,
@@ -544,7 +547,7 @@ impl Inbox {
                 "title": reason.title,
                 "message": reason.title,
                 "error_data": { "details": reason.details },
-                "href": "https://developers.facebook.com/docs/whatsapp/cloud-api/support/error-codes/",
+                "href": ERROR_CODES_URL,
             })
         });
         let at = self.clock.now_ms();
