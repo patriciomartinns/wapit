@@ -14,14 +14,14 @@ use base64::Engine;
 use futures_util::{Stream, StreamExt, stream};
 use regex::Regex;
 use rust_embed::RustEmbed;
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tokio_stream::wrappers::BroadcastStream;
 
 use super::content_disposition;
-use crate::inbox::{Delivered, FAILURE_REASONS, InboundMedia, Inbox, InboxError, Problem};
+use crate::inbox::{Delivered, InboundMedia, Inbox, InboxError, Problem};
 use crate::model::digits;
-use crate::validate::SERVICE_WINDOW_MS;
+use crate::views::{Change, StateSummary};
 
 #[derive(RustEmbed)]
 #[folder = "public/"]
@@ -197,23 +197,12 @@ fn normalize_contact(contact: &str) -> String {
     }
 }
 
-fn require_app(inbox: &Inbox, app: &str) -> Result<(), ApiError> {
-    inbox.config.app(app).map(|_| ()).ok_or_else(|| {
-        ApiError::new(
-            StatusCode::NOT_FOUND,
-            "app_not_found",
-            format!("App {app} does not exist"),
-        )
-        .detail(app)
-    })
-}
-
 async fn events(
     State(state): State<UiState>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let changes = BroadcastStream::new(state.inbox.subscribe()).map(|change| {
-        let change = change.unwrap_or_else(|_| json!({ "app_id": "*", "contact": null }));
-        Ok(Event::default().data(change.to_string()))
+        let change = change.unwrap_or_else(|_| Change::everything());
+        Ok(Event::default().data(serde_json::to_string(&change).unwrap_or_default()))
     });
     let first = stream::once(async {
         Ok(Event::default()
@@ -228,122 +217,42 @@ async fn events(
     )
 }
 
+#[derive(Serialize)]
+struct StatePage<'a> {
+    api_url: &'a str,
+    #[serde(flatten)]
+    summary: StateSummary,
+}
+
 async fn state_summary(State(state): State<UiState>) -> ApiResult {
-    let inbox = &state.inbox;
-    let apps: Vec<Value> = inbox
-        .config
-        .apps()
-        .iter()
-        .map(|app| {
-            json!({
-                "id": app.id,
-                "name": app.name,
-                "phone_number_id": app.phone_number_id,
-                "display_phone_number": app.display_phone_number,
-                "waba_id": app.waba_id,
-                "webhook_url": app.webhook_url,
-                "templates": inbox.config.templates_for(&app.id).len(),
-                "can_verify": app.verify_token.is_some(),
-            })
-        })
-        .collect();
-    let conversations: Vec<Value> = inbox
-        .store
-        .conversations()?
-        .into_iter()
-        .map(|(conversation, last)| {
-            let mut value = json!(conversation);
-            value["last"] = last.map_or(Value::Null, |last| {
-                let body = last
-                    .rendered
-                    .body
-                    .clone()
-                    .or_else(|| last.rendered.caption.clone())
-                    .or_else(|| last.rendered.template.as_ref().map(|template| template.name.clone()))
-                    .unwrap_or_default();
-
-                json!({ "direction": last.direction, "kind": last.rendered.kind, "body": body, "status": last.status })
-            });
-            value
-        })
-        .collect();
-    let failure_reasons: Vec<Value> = FAILURE_REASONS
-        .iter()
-        .map(|reason| json!({ "code": reason.code, "title": reason.title }))
-        .collect();
-
-    ok(json!({
-        "api_url": state.public_api_url,
-        "apps": apps,
-        "conversations": conversations,
-        "failure_reasons": failure_reasons,
-        "config_error": inbox.config.error(),
-        "using_default_app": inbox.config.using_fallback(),
-    }))
+    ok(StatePage {
+        api_url: &state.public_api_url,
+        summary: state.inbox.summary()?,
+    })
 }
 
 async fn conversation(
     State(state): State<UiState>,
     Path((app, contact)): Path<(String, String)>,
 ) -> ApiResult {
-    let inbox = &state.inbox;
-    require_app(inbox, &app)?;
-
-    let contact = normalize_contact(&contact);
-    let messages = inbox.store.conversation(&app, &contact)?;
-    let ids: Vec<String> = messages.iter().map(|message| message.id.clone()).collect();
-    let statuses = inbox.store.statuses(&ids)?;
-    let webhooks = inbox.store.webhooks_for_messages(&ids)?;
-    let last_inbound = inbox.store.last_inbound_at(&app, &contact)?;
-
-    let messages: Vec<Value> = messages
-        .into_iter()
-        .map(|message| {
-            let mut value = json!(message);
-            value["statuses"] = json!(
-                statuses
-                    .iter()
-                    .filter(|status| status.message_id == message.id)
-                    .collect::<Vec<_>>()
-            );
-            value["webhooks"] = webhooks
-                .iter()
-                .filter(|webhook| webhook.message_id.as_deref() == Some(message.id.as_str()))
-                .map(|webhook| {
-                    let mut summary = json!(webhook);
-                    summary.as_object_mut().map(|object| object.remove("body"));
-                    summary
-                })
-                .collect();
-            value
-        })
-        .collect();
-
-    ok(json!({
-        "app_id": app,
-        "contact": contact,
-        "name": inbox.store.contact_name(&app, &contact)?,
-        "window_open_until": last_inbound.map(|at| at + SERVICE_WINDOW_MS),
-        "messages": messages,
-    }))
+    ok(state
+        .inbox
+        .conversation(&app, &normalize_contact(&contact))?)
 }
 
 async fn delete_conversation(
     State(state): State<UiState>,
     Path((app, contact)): Path<(String, String)>,
 ) -> ApiResult {
-    require_app(&state.inbox, &app)?;
-
-    let contact = normalize_contact(&contact);
-    state.inbox.store.delete_conversation(&app, &contact)?;
-    state.inbox.changed(&app, Some(&contact), json!({}));
+    state
+        .inbox
+        .delete_conversation(&app, &normalize_contact(&contact))?;
 
     ok(json!({ "ok": true }))
 }
 
 async fn delete_all(State(state): State<UiState>) -> ApiResult {
-    state.inbox.store.delete_all()?;
-    state.inbox.changed("*", None, json!({}));
+    state.inbox.delete_all()?;
 
     ok(json!({ "ok": true }))
 }
@@ -396,7 +305,7 @@ async fn send_as_user(
     body: Bytes,
 ) -> ApiResult {
     let body: UserMessage = parse_body(&body)?;
-    require_app(&state.inbox, &app)?;
+    state.inbox.app_exists(&app)?;
 
     let contact = normalize_contact(&contact);
     let phone_shaped = !contact.is_empty() && contact.chars().all(|char| char.is_ascii_digit());
@@ -491,24 +400,13 @@ async fn fire_status(
 }
 
 async fn webhook(State(state): State<UiState>, Path(id): Path<i64>) -> ApiResult {
-    let webhook = state.inbox.store.webhook(id)?.ok_or_else(|| {
-        ApiError::new(
-            StatusCode::NOT_FOUND,
-            "webhook_not_found",
-            "Webhook not found",
-        )
-    })?;
-
-    ok(webhook)
+    ok(state.inbox.webhook(id)?)
 }
 
 /// Raster images open inline so the inbox can show them. Everything else, SVG included, downloads under a sandbox
 /// policy, so a file the user attached can never run script on the inbox origin.
 async fn media(State(state): State<UiState>, Path(id): Path<String>) -> ApiResult {
-    let Some(media) = state.inbox.store.media(&id)? else {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    };
-    let Ok(bytes) = tokio::fs::read(&media.path).await else {
+    let Some((media, bytes)) = state.inbox.media_file(&id, None).await? else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
 

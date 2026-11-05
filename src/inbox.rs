@@ -7,13 +7,19 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 
-use crate::config::{App, ConfigStore};
+use crate::config::{App, ConfigStore, SaveError, Template};
 use crate::graph_error::GraphError;
 use crate::model::{
     Button, Direction, Media, MediaRef, Message, Rendered, TemplateRef, Webhook, digits, now_ms,
 };
 use crate::store::{Store, StoreError};
-use crate::validate::{DEFAULT_MESSAGE_TYPE, OutboundContext, validate_outbound};
+use crate::validate::{
+    DEFAULT_MESSAGE_TYPE, OutboundContext, SERVICE_WINDOW_MS, validate_outbound,
+};
+use crate::views::{
+    AppSummary, Change, ConversationSummary, ConversationView, FailureReasonSummary, LastMessage,
+    MessageView, StateSummary, WebhookSummary,
+};
 use crate::webhooks::{StatusUpdate, WebhookSender, envelope, inbound_value, status_value};
 
 pub struct FailureReason {
@@ -111,10 +117,10 @@ pub struct Delivered {
 }
 
 pub struct Inbox {
-    pub config: ConfigStore,
-    pub store: Arc<Store>,
+    config: ConfigStore,
+    store: Arc<Store>,
     webhooks: WebhookSender,
-    events: broadcast::Sender<Value>,
+    events: broadcast::Sender<Change>,
     stopping: tokio::sync::watch::Sender<bool>,
     auto_status_delay: Duration,
 }
@@ -187,7 +193,7 @@ impl Inbox {
         }
     }
 
-    pub fn subscribe(&self) -> broadcast::Receiver<Value> {
+    pub fn subscribe(&self) -> broadcast::Receiver<Change> {
         self.events.subscribe()
     }
 
@@ -204,14 +210,19 @@ impl Inbox {
         }
     }
 
-    pub fn changed(&self, app_id: &str, contact: Option<&str>, extra: Value) {
-        let mut event = json!({ "app_id": app_id, "contact": contact });
+    fn changed(&self, change: Change) {
+        let _ = self.events.send(change);
+    }
 
-        if let (Some(event), Value::Object(extra)) = (event.as_object_mut(), extra) {
-            event.extend(extra);
-        }
+    fn changed_conversation(&self, app_id: &str, contact: &str) {
+        self.changed(Change::of(app_id, Some(contact)));
+    }
 
-        let _ = self.events.send(event);
+    fn delivered_webhook(&self, app_id: &str, webhook: &Webhook) {
+        self.changed(Change {
+            webhook: Some(webhook.id),
+            ..Change::of(app_id, None)
+        });
     }
 
     fn require_app(&self, app_id: &str) -> Result<Arc<App>, InboxError> {
@@ -279,7 +290,7 @@ impl Inbox {
         };
 
         self.store.record_message(&message, None, None)?;
-        self.changed(&app.id, Some(&message.contact), json!({}));
+        self.changed_conversation(&app.id, &message.contact);
         self.schedule_auto_statuses(app, &message.id, outbound.outside_window);
 
         Ok((message, outbound.input))
@@ -333,7 +344,7 @@ impl Inbox {
             None,
             None,
         )?;
-        self.changed(&app.id, Some(contact), json!({}));
+        self.changed_conversation(&app.id, contact);
 
         Ok(())
     }
@@ -415,7 +426,7 @@ impl Inbox {
             )));
         }
 
-        self.changed(&app.id, Some(&message.contact), json!({}));
+        self.changed_conversation(&app.id, &message.contact);
 
         let category = if message.kind == "template" {
             message
@@ -446,7 +457,7 @@ impl Inbox {
                 &envelope(&app, value),
             )
             .await?;
-        self.changed(&app.id, None, json!({ "webhook": webhook.id }));
+        self.delivered_webhook(&app.id, &webhook);
 
         Ok(webhook)
     }
@@ -469,7 +480,10 @@ impl Inbox {
 
         self.store
             .set_inbound_status(&message.id, if typing { "read+typing" } else { "read" })?;
-        self.changed(&app.id, Some(&message.contact), json!({ "typing": typing }));
+        self.changed(Change {
+            typing: Some(typing),
+            ..Change::of(&app.id, Some(&message.contact))
+        });
 
         Ok(())
     }
@@ -525,7 +539,7 @@ impl Inbox {
         self.store
             .record_message(&row, contact_name.as_deref(), media.as_ref())?;
 
-        self.changed(&app.id, Some(contact), json!({}));
+        self.changed_conversation(&app.id, contact);
 
         let value = inbound_value(contact, contact_name.as_deref(), &message);
         let webhook = self
@@ -537,7 +551,7 @@ impl Inbox {
                 &envelope(app, value),
             )
             .await?;
-        self.changed(&app.id, None, json!({ "webhook": webhook.id }));
+        self.delivered_webhook(&app.id, &webhook);
 
         Ok(Delivered {
             message: row,
@@ -769,7 +783,7 @@ impl Inbox {
         })?;
         let app = self.require_app(&original.app_id)?;
         let webhook = self.webhooks.resend(&app, &original).await?;
-        self.changed(&app.id, None, json!({ "webhook": webhook.id }));
+        self.delivered_webhook(&app.id, &webhook);
 
         Ok(webhook)
     }
@@ -793,5 +807,172 @@ impl Inbox {
             .webhooks
             .verify(&app, &token, &challenge.to_string())
             .await)
+    }
+
+    pub fn app_by_token(&self, token: &str) -> Option<Arc<App>> {
+        self.config.app_by_token(token)
+    }
+
+    pub fn app_exists(&self, app_id: &str) -> Result<(), InboxError> {
+        self.require_app(app_id).map(|_| ())
+    }
+
+    pub fn templates_for(&self, app_id: &str) -> Arc<Vec<Template>> {
+        self.config.templates_for(app_id)
+    }
+
+    /// Changes an app's templates file and tells the inbox, whose template counts depend on it.
+    pub fn edit_templates<T, E: From<SaveError>>(
+        &self,
+        app_id: &str,
+        edit: impl FnOnce(&mut Vec<Template>) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let result = self.config.edit_templates(app_id, edit)?;
+        self.changed(Change::of(app_id, None));
+
+        Ok(result)
+    }
+
+    /// The apps and their template counts logged at startup, or the configuration error that stops them loading.
+    pub fn startup_report(&self) -> Result<Vec<(Arc<App>, usize)>, String> {
+        if let Some(error) = self.config.error() {
+            return Err(error);
+        }
+
+        Ok(self
+            .config
+            .apps()
+            .into_iter()
+            .map(|app| {
+                let templates = self.config.templates_for(&app.id).len();
+                (app, templates)
+            })
+            .collect())
+    }
+
+    pub fn summary(&self) -> Result<StateSummary, InboxError> {
+        let apps = self
+            .config
+            .apps()
+            .iter()
+            .map(|app| AppSummary {
+                id: app.id.clone(),
+                name: app.name.clone(),
+                phone_number_id: app.phone_number_id.clone(),
+                display_phone_number: app.display_phone_number.clone(),
+                waba_id: app.waba_id.clone(),
+                webhook_url: app.webhook_url.clone(),
+                templates: self.config.templates_for(&app.id).len(),
+                can_verify: app.verify_token.is_some(),
+            })
+            .collect();
+        let conversations = self
+            .store
+            .conversations()?
+            .into_iter()
+            .map(|(conversation, last)| ConversationSummary {
+                conversation,
+                last: last.as_ref().map(LastMessage::of),
+            })
+            .collect();
+
+        Ok(StateSummary {
+            apps,
+            conversations,
+            failure_reasons: FAILURE_REASONS
+                .iter()
+                .map(|reason| FailureReasonSummary {
+                    code: reason.code,
+                    title: reason.title,
+                })
+                .collect(),
+            config_error: self.config.error(),
+            using_default_app: self.config.using_fallback(),
+        })
+    }
+
+    pub fn conversation(
+        &self,
+        app_id: &str,
+        contact: &str,
+    ) -> Result<ConversationView, InboxError> {
+        self.require_app(app_id)?;
+
+        let messages = self.store.conversation(app_id, contact)?;
+        let ids: Vec<String> = messages.iter().map(|message| message.id.clone()).collect();
+        let statuses = self.store.statuses(&ids)?;
+        let webhooks = self.store.webhooks_for_messages(&ids)?;
+        let last_inbound = self.store.last_inbound_at(app_id, contact)?;
+
+        let messages = messages
+            .into_iter()
+            .map(|message| MessageView {
+                statuses: statuses
+                    .iter()
+                    .filter(|status| status.message_id == message.id)
+                    .cloned()
+                    .collect(),
+                webhooks: webhooks
+                    .iter()
+                    .filter(|webhook| webhook.message_id.as_deref() == Some(message.id.as_str()))
+                    .cloned()
+                    .map(WebhookSummary::from)
+                    .collect(),
+                message,
+            })
+            .collect();
+
+        Ok(ConversationView {
+            app_id: app_id.to_owned(),
+            contact: contact.to_owned(),
+            name: self.store.contact_name(app_id, contact)?,
+            window_open_until: last_inbound.map(|at| at + SERVICE_WINDOW_MS),
+            messages,
+        })
+    }
+
+    pub fn delete_conversation(&self, app_id: &str, contact: &str) -> Result<(), InboxError> {
+        self.require_app(app_id)?;
+        self.store.delete_conversation(app_id, contact)?;
+        self.changed_conversation(app_id, contact);
+
+        Ok(())
+    }
+
+    pub fn delete_all(&self) -> Result<(), InboxError> {
+        self.store.delete_all()?;
+        self.changed(Change::everything());
+
+        Ok(())
+    }
+
+    pub fn webhook(&self, webhook_id: i64) -> Result<Webhook, InboxError> {
+        self.store.webhook(webhook_id)?.ok_or_else(|| {
+            InboxError::NotFound(Problem::new("webhook_not_found", "Webhook not found"))
+        })
+    }
+
+    /// A media file's row, limited to the app's own media when `owner` is given.
+    pub fn media(&self, media_id: &str, owner: Option<&App>) -> Result<Option<Media>, InboxError> {
+        Ok(self
+            .store
+            .media(media_id)?
+            .filter(|media| owner.is_none_or(|app| media.app_id == app.id)))
+    }
+
+    /// A media file's row and bytes, or `None` when either is gone.
+    pub async fn media_file(
+        &self,
+        media_id: &str,
+        owner: Option<&App>,
+    ) -> Result<Option<(Media, Vec<u8>)>, InboxError> {
+        let Some(media) = self.media(media_id, owner)? else {
+            return Ok(None);
+        };
+
+        Ok(tokio::fs::read(&media.path)
+            .await
+            .ok()
+            .map(|bytes| (media, bytes)))
     }
 }

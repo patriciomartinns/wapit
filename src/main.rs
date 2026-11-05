@@ -125,15 +125,14 @@ async fn serve_forever(config_dir: PathBuf, serve: Serve) -> Result<(), String> 
     };
     let servers = build(&settings).map_err(|error| error.to_string())?;
 
-    match servers.inbox.config.error() {
-        Some(error) => tracing::error!("{error}"),
-        None => {
-            for app in servers.inbox.config.apps() {
+    match servers.inbox.startup_report() {
+        Err(error) => tracing::error!("{error}"),
+        Ok(apps) => {
+            for (app, templates) in apps {
                 tracing::info!(
-                    "app {}: phone_number_id {}, {} templates, webhook {}",
+                    "app {}: phone_number_id {}, {templates} templates, webhook {}",
                     app.id,
                     app.phone_number_id,
-                    servers.inbox.config.templates_for(&app.id).len(),
                     app.webhook_url
                 );
             }

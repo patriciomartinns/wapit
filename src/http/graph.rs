@@ -181,7 +181,6 @@ async fn route(state: &GraphState, request: Request) -> Result<Response, InboxEr
             let name = query.get("name");
             let templates: Vec<_> = state
                 .inbox
-                .config
                 .templates_for(&app.id)
                 .iter()
                 .filter(|template| name.is_none_or(|name| &template.name == name))
@@ -249,13 +248,13 @@ fn template_input(body: &Bytes) -> Result<Value, GraphError> {
 
 fn create_template(inbox: &Inbox, app: &App, body: &Bytes) -> Result<Response, InboxError> {
     let input = template_input(body)?;
-    let response = inbox.config.edit_templates(&app.id, |all| -> Result<Value, GraphError> {
+    let response = inbox.edit_templates(&app.id, |all| -> Result<Value, GraphError> {
         let template = templates::create(all, &input)?;
-        let response = json!({ "id": template.id, "status": template.status, "category": template.category });
+        let response =
+            json!({ "id": template.id, "status": template.status, "category": template.category });
         all.push(template);
         Ok(response)
     })?;
-    inbox.changed(&app.id, None, json!({}));
 
     Ok(json(StatusCode::OK, response))
 }
@@ -268,16 +267,13 @@ fn edit_template(
 ) -> Result<Response, InboxError> {
     let input = template_input(body)?;
 
-    inbox
-        .config
-        .edit_templates(&app.id, |all| -> Result<(), GraphError> {
-            let template = all
-                .iter_mut()
-                .find(|template| template.id.as_deref() == Some(template_id))
-                .ok_or_else(|| GraphError::unsupported("POST", template_id))?;
-            templates::edit(template, &input)
-        })?;
-    inbox.changed(&app.id, None, json!({}));
+    inbox.edit_templates(&app.id, |all| -> Result<(), GraphError> {
+        let template = all
+            .iter_mut()
+            .find(|template| template.id.as_deref() == Some(template_id))
+            .ok_or_else(|| GraphError::unsupported("POST", template_id))?;
+        templates::edit(template, &input)
+    })?;
 
     Ok(json(StatusCode::OK, json!({ "success": true })))
 }
@@ -293,24 +289,20 @@ fn delete_template(
         .ok_or_else(|| GraphError::required("name"))?;
     let hsm_id = query.get("hsm_id");
 
-    inbox
-        .config
-        .edit_templates(&app.id, |all| -> Result<(), GraphError> {
-            let before = all.len();
-            all.retain(|template| {
-                !(&template.name == name
-                    && hsm_id.is_none_or(|id| template.id.as_ref() == Some(id)))
-            });
+    inbox.edit_templates(&app.id, |all| -> Result<(), GraphError> {
+        let before = all.len();
+        all.retain(|template| {
+            !(&template.name == name && hsm_id.is_none_or(|id| template.id.as_ref() == Some(id)))
+        });
 
-            if all.len() == before {
-                return Err(GraphError::invalid_parameter(format!(
-                    "Message template \"{name}\" was not found"
-                )));
-            }
+        if all.len() == before {
+            return Err(GraphError::invalid_parameter(format!(
+                "Message template \"{name}\" was not found"
+            )));
+        }
 
-            Ok(())
-        })?;
-    inbox.changed(&app.id, None, json!({}));
+        Ok(())
+    })?;
 
     Ok(json(StatusCode::OK, json!({ "success": true })))
 }
@@ -334,7 +326,7 @@ fn authenticate(inbox: &Inbox, token: &str) -> Result<Arc<App>, GraphError> {
     let app = if token.is_empty() {
         None
     } else {
-        inbox.config.app_by_token(token)
+        inbox.app_by_token(token)
     };
 
     app.ok_or_else(|| {
@@ -407,12 +399,7 @@ fn get_object(
     id: &str,
     query: &HashMap<String, String>,
 ) -> Result<Response, InboxError> {
-    if let Some(media) = state
-        .inbox
-        .store
-        .media(id)?
-        .filter(|media| media.app_id == app.id)
-    {
+    if let Some(media) = state.inbox.media(id, Some(app))? {
         return Ok(json(
             StatusCode::OK,
             json!({
@@ -463,14 +450,7 @@ fn get_object(
 }
 
 async fn download_media(inbox: &Inbox, app: &App, media_id: &str) -> Result<Response, InboxError> {
-    let Some(media) = inbox
-        .store
-        .media(media_id)?
-        .filter(|media| media.app_id == app.id)
-    else {
-        return Ok((StatusCode::NOT_FOUND, "Not found").into_response());
-    };
-    let Ok(bytes) = tokio::fs::read(&media.path).await else {
+    let Some((media, bytes)) = inbox.media_file(media_id, Some(app)).await? else {
         return Ok((StatusCode::NOT_FOUND, "Not found").into_response());
     };
 

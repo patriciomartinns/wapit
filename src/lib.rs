@@ -7,6 +7,7 @@ pub mod store;
 pub mod sync;
 pub mod templates;
 pub mod validate;
+pub mod views;
 pub mod webhooks;
 
 use std::path::PathBuf;
