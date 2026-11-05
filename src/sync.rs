@@ -28,6 +28,14 @@ struct MetaError {
     message: Option<String>,
 }
 
+/// Fields of Meta's message template node that wapit keeps. `id` matters most: with it, `POST /{template_id}` and
+/// `hsm_id` deletes use the same ids as the real account. Files synced without it still get a stable local id.
+const FIELDS: &str = "id,name,language,status,category,sub_category,previous_category,parameter_format,components,quality_score,rejected_reason";
+
+fn first_page(version: &str, waba_id: &str) -> String {
+    format!("{REAL_GRAPH}/{version}/{waba_id}/message_templates?fields={FIELDS}&limit=100")
+}
+
 /// Copies the app's templates from its real `WhatsApp` Business Account into `templates/<app>.json`.
 /// It only reads from Meta, and only when the developer runs `wapit sync`.
 pub async fn run(config: &ConfigStore, app_id: &str) -> Result<String, String> {
@@ -59,10 +67,7 @@ pub async fn run(config: &ConfigStore, app_id: &str) -> Result<String, String> {
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|error| error.to_string())?;
-    let mut next = Some(format!(
-        "{REAL_GRAPH}/{version}/{}/message_templates?fields=name,language,status,category,parameter_format,components&limit=100",
-        sync.waba_id
-    ));
+    let mut next = Some(first_page(version, &sync.waba_id));
     let mut templates: Vec<Template> = Vec::new();
 
     while let Some(url) = next.take() {
@@ -115,4 +120,22 @@ pub async fn run(config: &ConfigStore, app_id: &str) -> Result<String, String> {
         "{count} templates ({approved_count} approved) written to {}",
         file.display()
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::first_page;
+
+    #[test]
+    fn sync_asks_meta_for_the_template_ids() {
+        let url = first_page("v26.0", "123");
+        let fields = url
+            .split_once("fields=")
+            .and_then(|(_, rest)| rest.split('&').next())
+            .unwrap();
+
+        assert!(url.starts_with("https://graph.facebook.com/v26.0/123/message_templates?"));
+        assert!(fields.split(',').any(|field| field == "id"));
+        assert!(fields.split(',').any(|field| field == "sub_category"));
+    }
 }

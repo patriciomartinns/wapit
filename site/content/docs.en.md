@@ -81,7 +81,7 @@ Copy them from your real account, read-only, with:
 WAPIT_SYNC_TOKEN=... wapit sync <app id>
 ```
 
-It reads Graph API v26.0 unless the app's `sync.graph_version` says otherwise. This is the only command that talks to Meta, and only when you run it.
+It reads Graph API v26.0 unless the app's `sync.graph_version` says otherwise. Synced templates keep Meta's ids, so `POST /{template_id}` and `hsm_id` use the same ids as your real account. This is the only command that talks to Meta, and only when you run it.
 
 ## Environment
 

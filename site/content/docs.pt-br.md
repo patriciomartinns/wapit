@@ -81,7 +81,7 @@ Copie os templates da sua conta real, só para leitura, com:
 WAPIT_SYNC_TOKEN=... wapit sync <id do app>
 ```
 
-Ele lê a Graph API v26.0, a menos que `sync.graph_version` do app diga outra versão. É o único comando que fala com a Meta, e só quando você roda.
+Ele lê a Graph API v26.0, a menos que `sync.graph_version` do app diga outra versão. Os templates sincronizados mantêm os ids da Meta, então `POST /{template_id}` e `hsm_id` usam os mesmos ids da sua conta real. É o único comando que fala com a Meta, e só quando você roda.
 
 ## Variáveis de ambiente
 
