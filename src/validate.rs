@@ -489,6 +489,7 @@ fn render_template_buttons(
                         url: Some(substitute(url, &values)),
                         id: None,
                         payload: None,
+                        description: None,
                     })
                 }
                 "QUICK_REPLY" => {
@@ -503,6 +504,7 @@ fn render_template_buttons(
                         kind: "quick_reply".into(),
                         text: button.text.clone(),
                         payload: Some(payload),
+                        description: None,
                         id: None,
                         url: None,
                     })
@@ -517,6 +519,7 @@ fn render_template_buttons(
                         kind: "copy_code".into(),
                         text: button.text.clone(),
                         payload: code,
+                        description: None,
                         id: None,
                         url: None,
                     })
@@ -537,6 +540,7 @@ fn render_template_buttons(
                         url: button.url.clone().or_else(|| button.phone_number.clone()),
                         id: None,
                         payload: None,
+                        description: None,
                     })
                 }
             }
@@ -627,6 +631,7 @@ fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
                     text: title,
                     url: None,
                     payload: None,
+                    description: None,
                 });
             }
 
@@ -674,13 +679,16 @@ fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
             let mut rendered_rows = Vec::new();
 
             for (index, row) in rows.iter().enumerate() {
-                if let Some(description) = row.get("description") {
-                    require_length(
-                        Some(description),
-                        &format!("rows[{index}]['description']"),
-                        72,
-                    )?;
-                }
+                let description = row
+                    .get("description")
+                    .map(|description| {
+                        require_length(
+                            Some(description),
+                            &format!("rows[{index}]['description']"),
+                            72,
+                        )
+                    })
+                    .transpose()?;
 
                 rendered_rows.push(Button {
                     kind: "list_reply".into(),
@@ -692,6 +700,7 @@ fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
                     text: require_length(row.get("title"), &format!("rows[{index}]['title']"), 24)?,
                     url: None,
                     payload: None,
+                    description,
                 });
             }
 
@@ -718,6 +727,7 @@ fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
                 )?),
                 id: None,
                 payload: None,
+                description: None,
             }]);
         }
         _ => {

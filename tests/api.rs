@@ -532,6 +532,38 @@ async fn a_reply_button_tap_reaches_the_webhook_with_its_id_and_context() {
 }
 
 #[tokio::test]
+async fn a_list_row_tap_reaches_the_webhook_with_its_description() {
+    let harness = harness().await;
+    let payload = json!({
+        "messaging_product": "whatsapp", "to": "15550000002", "type": "interactive",
+        "interactive": { "type": "list", "body": { "text": "Shipping?" }, "action": { "button": "Options", "sections": [
+            { "title": "Speed", "rows": [{ "id": "express", "title": "Express", "description": "Next day" }] },
+        ] } },
+    });
+    let message_id = harness
+        .post("/v26.0/100/messages", &payload, "token-a")
+        .await
+        .1["messages"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let before = harness.received_count();
+
+    harness
+        .ui_post(
+            &format!("/api/messages/{}/tap", encode(&message_id)),
+            &json!({ "index": 0 }),
+        )
+        .await;
+    let message = value_of(&harness.webhook_after(before).await)["messages"][0].clone();
+
+    assert_eq!(
+        message["interactive"],
+        json!({ "type": "list_reply", "list_reply": { "id": "express", "title": "Express", "description": "Next day" } })
+    );
+}
+
+#[tokio::test]
 async fn a_user_image_can_be_fetched_through_the_media_endpoints() {
     let harness = harness().await;
     let before = harness.received_count();
@@ -563,6 +595,20 @@ async fn a_user_image_can_be_fetched_through_the_media_endpoints() {
 
     assert_eq!(image["caption"], "Receipt");
     assert_eq!(meta["file_size"], bytes.len());
+    assert_eq!(
+        harness
+            .client
+            .get(image["url"].as_str().unwrap())
+            .bearer_auth("token-a")
+            .send()
+            .await
+            .unwrap()
+            .bytes()
+            .await
+            .unwrap()
+            .as_ref(),
+        bytes
+    );
     assert_eq!(
         harness.client.get(url).send().await.unwrap().status(),
         StatusCode::UNAUTHORIZED

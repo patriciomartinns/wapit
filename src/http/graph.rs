@@ -20,7 +20,6 @@ static VERSION: LazyLock<Regex> =
 #[derive(Clone)]
 pub struct GraphState {
     pub inbox: Arc<Inbox>,
-    pub public_api_url: String,
     pub public_ui_url: String,
 }
 
@@ -353,7 +352,7 @@ fn get_object(
             StatusCode::OK,
             json!({
                 "messaging_product": "whatsapp",
-                "url": format!("{}/whatsapp_business/attachments/?mid={}&source=getMedia", state.public_api_url, media.id),
+                "url": format!("{}&source=getMedia", state.inbox.media_url(&media.id)),
                 "mime_type": media.mime_type,
                 "sha256": media.sha256,
                 "file_size": media.file_size,

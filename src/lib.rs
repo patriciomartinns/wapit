@@ -75,6 +75,7 @@ pub fn build(settings: &Settings) -> Result<Servers, StartError> {
         webhooks,
         settings.auto_status_delay,
         Arc::clone(&settings.clock),
+        settings.public_api_url.clone(),
     ));
 
     let hosts = AllowedHosts::new(
@@ -86,7 +87,6 @@ pub fn build(settings: &Settings) -> Result<Servers, StartError> {
 
     let graph = graph::router(graph::GraphState {
         inbox: Arc::clone(&inbox),
-        public_api_url: settings.public_api_url.clone(),
         public_ui_url: settings.public_ui_url.clone(),
     })
     .layer(axum::middleware::from_fn_with_state(

@@ -147,6 +147,7 @@ pub struct Inbox {
     stopping: tokio::sync::watch::Sender<bool>,
     auto_status_delay: Duration,
     clock: Arc<dyn Clock>,
+    public_api_url: String,
 }
 
 pub fn new_message_id() -> String {
@@ -213,6 +214,7 @@ impl Inbox {
         webhooks: WebhookSender,
         auto_status_delay: Duration,
         clock: Arc<dyn Clock>,
+        public_api_url: String,
     ) -> Self {
         let (events, _) = broadcast::channel(256);
         let (stopping, _) = tokio::sync::watch::channel(false);
@@ -225,6 +227,7 @@ impl Inbox {
             stopping,
             auto_status_delay,
             clock,
+            public_api_url,
         }
     }
 
@@ -756,6 +759,7 @@ impl Inbox {
         object.insert("mime_type".into(), json!(media.mime_type));
         object.insert("sha256".into(), json!(sha256));
         object.insert("id".into(), json!(id));
+        object.insert("url".into(), json!(self.media_url(&id)));
 
         if media.kind == "document"
             && let Some(filename) = &media.filename
@@ -835,7 +839,16 @@ impl Inbox {
         } else if button.kind == "reply" {
             message.insert("interactive".into(), json!({ "type": "button_reply", "button_reply": { "id": button.id, "title": button.text } }));
         } else {
-            message.insert("interactive".into(), json!({ "type": "list_reply", "list_reply": { "id": button.id, "title": button.text } }));
+            let mut reply = json!({ "id": button.id, "title": button.text });
+
+            if let Some(description) = &button.description {
+                reply["description"] = json!(description);
+            }
+
+            message.insert(
+                "interactive".into(),
+                json!({ "type": "list_reply", "list_reply": reply }),
+            );
         }
 
         let rendered = Rendered {
@@ -846,6 +859,7 @@ impl Inbox {
                 id: button.id.clone().or_else(|| button.payload.clone()),
                 url: None,
                 payload: None,
+                description: None,
             }]),
             ..Rendered::of_kind("button_reply")
         };
@@ -947,6 +961,14 @@ impl Inbox {
             .webhooks
             .verify(&app, &token, &challenge.to_string())
             .await)
+    }
+
+    /// Where the app downloads a media file with its access token, like Meta's `lookaside.fbsbx.com` URLs.
+    pub fn media_url(&self, media_id: &str) -> String {
+        format!(
+            "{}/whatsapp_business/attachments/?mid={media_id}",
+            self.public_api_url
+        )
     }
 
     pub fn app_by_token(&self, token: &str) -> Option<Arc<App>> {
