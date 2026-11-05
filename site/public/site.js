@@ -1,3 +1,25 @@
+const themeButtons = document.querySelectorAll('[data-theme-choice]');
+
+function showTheme() {
+  const current = document.documentElement.dataset.theme ?? 'system';
+  for (const button of themeButtons) button.setAttribute('aria-pressed', String(button.dataset.themeChoice === current));
+}
+
+for (const button of themeButtons) {
+  button.addEventListener('click', () => {
+    const choice = button.dataset.themeChoice;
+    if (choice === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = choice;
+    try {
+      if (choice === 'system') localStorage.removeItem('wapit.theme');
+      else localStorage.setItem('wapit.theme', choice);
+    } catch {}
+    showTheme();
+  });
+}
+
+showTheme();
+
 const sections = document.querySelectorAll('.section');
 
 if (sections.length > 0 && 'IntersectionObserver' in window) {

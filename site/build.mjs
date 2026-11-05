@@ -28,6 +28,10 @@ const locales = [
       notAffiliated: 'Not affiliated with Meta or WhatsApp.',
       madeBy: 'Made by Patrício Martins',
       version: 'Docs',
+      theme: 'Theme',
+      light: 'Light',
+      dark: 'Dark',
+      system: 'System',
     },
   },
   {
@@ -52,6 +56,10 @@ const locales = [
       notAffiliated: 'Sem vínculo com a Meta ou com o WhatsApp.',
       madeBy: 'Feito por Patrício Martins',
       version: 'Documentação',
+      theme: 'Tema',
+      light: 'Claro',
+      dark: 'Escuro',
+      system: 'Sistema',
     },
   },
 ];
@@ -172,6 +180,7 @@ function page(locale, doc) {
   <link rel="alternate" type="text/markdown" title="Markdown" href="${markdownUrl}">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <script src="/theme.js"></script>
   <link rel="stylesheet" href="/site.css">
   <link rel="alternate" hreflang="x-default" href="${origin}/docs/">
   <meta property="og:type" content="article">
@@ -200,6 +209,11 @@ function page(locale, doc) {
       <span class="locale" role="group" aria-label="${text.language}">
         ${link('/docs/', 'EN', lang === 'en')}
         ${link('/pt-br/docs/', 'PT-BR', lang === 'pt-BR')}
+      </span>
+      <span class="theme" role="group" aria-label="${text.theme}">
+        <button type="button" data-theme-choice="light" aria-pressed="false" aria-label="${text.light}" title="${text.light}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false" aria-label="${text.dark}" title="${text.dark}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 9.6A5.5 5.5 0 0 1 6.4 2.5a5.5 5.5 0 1 0 7.1 7.1Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></button>
+        <button type="button" data-theme-choice="system" aria-pressed="true" aria-label="${text.system}" title="${text.system}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 14h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
       </span>
     </nav>
   </header>
