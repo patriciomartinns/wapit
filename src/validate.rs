@@ -738,6 +738,39 @@ fn render_interactive(interactive: &Json) -> Result<Rendered, GraphError> {
     Ok(rendered)
 }
 
+/// Meta cannot send one-tap, zero-tap or copy code authentication templates to a BSUID.
+fn is_unsupported_for_user_ids(payload: &Json, templates: &[Template]) -> bool {
+    let name = string(payload.get("name"));
+    let language =
+        object(payload.get("language")).and_then(|language| string(language.get("code")));
+
+    templates
+        .iter()
+        .filter(|template| {
+            Some(template.name.as_str()) == name && Some(template.language.as_str()) == language
+        })
+        .filter(|template| {
+            template
+                .category
+                .as_deref()
+                .is_some_and(|category| category.eq_ignore_ascii_case("AUTHENTICATION"))
+        })
+        .flat_map(|template| &template.components)
+        .flat_map(|component| component.buttons.as_deref().unwrap_or_default())
+        .any(|button| {
+            button.kind.eq_ignore_ascii_case("OTP")
+                && button
+                    .extra
+                    .get("otp_type")
+                    .and_then(Value::as_str)
+                    .is_some_and(|otp| {
+                        ["ONE_TAP", "ZERO_TAP", "COPY_CODE"]
+                            .iter()
+                            .any(|unsupported| otp.eq_ignore_ascii_case(unsupported))
+                    })
+        })
+}
+
 pub fn validate_outbound(
     payload: &Value,
     context: &OutboundContext<'_>,
@@ -752,9 +785,15 @@ pub fn validate_outbound(
 
     let (contact, input) = recipient.ok_or_else(|| GraphError::required("to"))?;
 
-    if matches!(contact, Contact::Phone(_)) && !contact.is_valid() {
-        return Err(GraphError::new(100, "(#100) Invalid parameter")
-            .details(format!("to: {input} is not a valid WhatsApp phone number")));
+    if !contact.is_valid() {
+        let detail = match contact {
+            Contact::Phone(_) => format!("to: {input} is not a valid WhatsApp phone number"),
+            Contact::User(_) => format!(
+                "recipient: {input} is not a valid business-scoped user ID, such as US.13491208655302741918"
+            ),
+        };
+
+        return Err(GraphError::new(100, "(#100) Invalid parameter").details(detail));
     }
 
     let kind = string(payload.get("type")).unwrap_or(DEFAULT_MESSAGE_TYPE);
@@ -816,6 +855,17 @@ pub fn validate_outbound(
             ..Rendered::of_kind(other)
         },
     };
+
+    if matches!(contact, Contact::User(_))
+        && kind == "template"
+        && is_unsupported_for_user_ids(fields, context.templates)
+    {
+        return Err(GraphError::new(
+            131_062,
+            "(#131062) Business-scoped User ID (BSUID) recipients are not supported for this message.",
+        )
+        .details("one-tap, zero-tap and copy code authentication templates need a phone number in to"));
+    }
 
     let free_form = kind != "template" && kind != "reaction";
     let outside_window = free_form

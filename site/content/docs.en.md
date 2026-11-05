@@ -113,6 +113,10 @@ An app running in another container must reach wapit by a name that resolves the
 
 A reaction gets only the `sent` status, as on Meta, and a reaction to a message that is not in the chat, is itself a reaction or is more than 30 days old is accepted and then fails with error 131009.
 
+## Business-scoped user IDs
+
+Send with `recipient` set to a business-scoped user ID (BSUID), such as `US.13491208655302741918`, instead of `to`, and the response names the contact as `user_id` instead of `wa_id`. When a send has both, `to` wins, as on Meta. Webhooks have the shape Meta has used since April 2026: `contacts[].user_id`, `messages[].from_user_id` and `statuses[].recipient_user_id` are always there, and `wa_id`, `from` and `recipient_id` only in phone number conversations. wapit derives a stable BSUID for each phone number from the number and the WhatsApp Business Account id. One-tap, zero-tap and copy code authentication templates cannot be sent to a BSUID (131062). Group recipients (`recipient_type: group`) are not supported.
+
 ## Error codes
 
 Sends are checked like Meta checks them. A rejected send returns Meta's error to your app and stays in the inbox, flagged, with the reason in plain words.
@@ -130,6 +134,7 @@ Sends are checked like Meta checks them. A rejected send returns Meta's error to
 | `131009` | Button index or type does not match the template |
 | `131047` | Free-form message outside the 24-hour service window |
 | `131053` | An upload is larger than its type allows, or an uploaded file is sent as a message type it does not belong to |
+| `131062` | An authentication template that needs a phone number is sent to a BSUID |
 
 ## Acting as the user
 

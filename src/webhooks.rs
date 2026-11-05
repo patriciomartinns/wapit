@@ -9,7 +9,7 @@ use sha2::Sha256;
 
 use crate::clock::Clock;
 use crate::config::App;
-use crate::model::{MessageStatus, Webhook, digits};
+use crate::model::{Contact, MessageStatus, Webhook, digits};
 use crate::store::{Store, StoreError};
 
 const TIMEOUT: Duration = Duration::from_secs(20);
@@ -39,9 +39,22 @@ pub fn envelope(app: &App, value: Value) -> Value {
     })
 }
 
-pub fn inbound_value(contact: &str, name: Option<&str>, message: &Value) -> Value {
+/// The `contacts` entry of a webhook: the phone number as `wa_id` when wapit knows it, and the BSUID always.
+pub fn contact_value(app: &App, contact: &Contact, name: Option<&str>) -> Value {
+    let mut value = json!({ "profile": { "name": name.unwrap_or(contact.id()) } });
+
+    if let Some(number) = contact.phone_number() {
+        value["wa_id"] = json!(number);
+    }
+
+    value["user_id"] = json!(contact.user_id(&app.waba_id));
+
+    value
+}
+
+pub fn inbound_value(app: &App, contact: &Contact, name: Option<&str>, message: &Value) -> Value {
     json!({
-        "contacts": [{ "profile": { "name": name.unwrap_or(contact) }, "wa_id": contact }],
+        "contacts": [contact_value(app, contact, name)],
         "messages": [message],
     })
 }
@@ -49,20 +62,31 @@ pub fn inbound_value(contact: &str, name: Option<&str>, message: &Value) -> Valu
 pub struct StatusUpdate<'a> {
     pub message_id: &'a str,
     pub status: &'a MessageStatus,
-    pub recipient: &'a str,
+    pub recipient: &'a Contact,
+    pub recipient_name: Option<&'a str>,
     pub timestamp_ms: i64,
     /// The pricing category, when this status carries the message's pricing.
     pub pricing: Option<&'a str>,
     pub error: Option<&'a Value>,
 }
 
-pub fn status_value(update: &StatusUpdate<'_>) -> Value {
+/// A status webhook. Since April 2026 Meta adds the recipient's BSUID and, except for failures, a `contacts`
+/// entry; a failure of a send to a phone number carries no BSUID.
+pub fn status_value(app: &App, update: &StatusUpdate<'_>) -> Value {
+    let failed = *update.status == MessageStatus::Failed;
     let mut status = json!({
         "id": update.message_id,
         "status": update.status.as_str(),
         "timestamp": (update.timestamp_ms / 1000).to_string(),
-        "recipient_id": update.recipient,
     });
+
+    if let Some(number) = update.recipient.phone_number() {
+        status["recipient_id"] = json!(number);
+    }
+
+    if !(failed && update.recipient.phone_number().is_some()) {
+        status["recipient_user_id"] = json!(update.recipient.user_id(&app.waba_id));
+    }
 
     if let Some(category) = update.pricing {
         let service = category == "service";
@@ -78,7 +102,14 @@ pub fn status_value(update: &StatusUpdate<'_>) -> Value {
         status["errors"] = json!([error]);
     }
 
-    json!({ "statuses": [status] })
+    if failed {
+        json!({ "statuses": [status] })
+    } else {
+        json!({
+            "contacts": [contact_value(app, update.recipient, update.recipient_name)],
+            "statuses": [status],
+        })
+    }
 }
 
 fn is_loopback(address: IpAddr) -> bool {

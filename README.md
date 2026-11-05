@@ -141,6 +141,10 @@ A reaction gets only the `sent` status, as on Meta, and a reaction to a message 
 
 Template sends are checked against the stored template like Meta does: name and language (132001), paused or disabled templates (132015, 132016), parameter counts in the header, body and URL buttons (132000), line breaks or long runs of spaces in body parameters (132018), text too long after substitution (132005), header format (132012) and button index and type (131009). A rejected send returns Meta's error to your app and stays in the inbox, flagged, with the reason in plain words.
 
+## Business-scoped user IDs
+
+Send with `recipient` set to a business-scoped user ID (BSUID), such as `US.13491208655302741918`, instead of `to`, and the response names the contact as `user_id` instead of `wa_id`. When a send has both, `to` wins, as on Meta. Webhooks have the shape Meta has used since April 2026: `contacts[].user_id`, `messages[].from_user_id` and `statuses[].recipient_user_id` are always there, and `wa_id`, `from` and `recipient_id` only in phone number conversations. wapit derives a stable BSUID for each phone number from the number and the WhatsApp Business Account id. One-tap, zero-tap and copy code authentication templates cannot be sent to a BSUID (131062). Group recipients (`recipient_type: group`) are not supported.
+
 ## Acting as the user
 
 In a conversation you can type a message, attach a file, tap a reply, quick reply or list button, or select one of your app's messages to mark it delivered, read, played (voice messages only) or failed with a real Meta error code. Every action is posted to the app's webhook in Meta's payload format. As on Meta, the pricing object comes with the `sent` status and with the first of `delivered` or `read`, never with both. The inspector shows the payload your app sent, each webhook delivery with your app's response, and lets you send a webhook again. Apps with a `verify_token` can also run the subscription handshake from the inbox.

@@ -7,7 +7,34 @@ use serde_json::Value;
 static PHONE_LIKE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[\d+\s()-]+$").expect("valid regex"));
 static BSUID: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Z]{2}\.[A-Za-z0-9]+$").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"^[A-Z]{2}\.(ENT\.)?[A-Za-z0-9]{1,128}$").expect("valid regex"));
+
+/// Calling codes of the countries a derived BSUID names, longest first so `351` wins over `35`.
+const CALLING_CODES: &[(&str, &str)] = &[
+    ("351", "PT"),
+    ("234", "NG"),
+    ("971", "AE"),
+    ("972", "IL"),
+    ("966", "SA"),
+    ("55", "BR"),
+    ("52", "MX"),
+    ("54", "AR"),
+    ("56", "CL"),
+    ("57", "CO"),
+    ("51", "PE"),
+    ("44", "GB"),
+    ("34", "ES"),
+    ("33", "FR"),
+    ("39", "IT"),
+    ("49", "DE"),
+    ("31", "NL"),
+    ("91", "IN"),
+    ("62", "ID"),
+    ("63", "PH"),
+    ("61", "AU"),
+    ("27", "ZA"),
+    ("1", "US"),
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -337,6 +364,36 @@ impl Contact {
         }
     }
 
+    /// The business-scoped user id Meta sends for this contact in every webhook since April 2026. wapit knows
+    /// no real BSUID for a phone number, so it derives a stable one from the number and the business account,
+    /// prefixed with the country of the calling code (`US` when it does not know the code).
+    pub fn user_id(&self, business_scope: &str) -> String {
+        match self {
+            Self::User(id) => id.clone(),
+            Self::Phone(number) => {
+                let country = CALLING_CODES
+                    .iter()
+                    .find(|(code, _)| number.starts_with(code))
+                    .map_or("US", |(_, country)| country);
+                let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+
+                for byte in business_scope.bytes().chain([0]).chain(number.bytes()) {
+                    hash ^= u64::from(byte);
+                    hash = hash.wrapping_mul(0x0100_0000_01b3);
+                }
+
+                format!("{country}.{:020}", hash % 10_000_000_000_000_000_000)
+            }
+        }
+    }
+
+    pub fn phone_number(&self) -> Option<&str> {
+        match self {
+            Self::Phone(number) => Some(number),
+            Self::User(_) => None,
+        }
+    }
+
     /// Phone numbers need 8 to 15 digits with the country code; user ids look like `BR.1349120865`.
     pub fn is_valid(&self) -> bool {
         match self {
@@ -368,6 +425,19 @@ mod tests {
         assert!(Contact::parse("BR.abc123").is_valid());
         assert!(!Contact::parse("1234").is_valid());
         assert!(!Contact::parse("not a user").is_valid());
+        assert!(Contact::parse("US.ENT.11815799212886844830").is_valid());
+    }
+
+    #[test]
+    fn a_phone_number_gets_a_stable_bsuid_in_its_country() {
+        let phone = Contact::parse("5585999990000");
+        let user_id = phone.user_id("200");
+
+        assert!(user_id.starts_with("BR."));
+        assert!(Contact::parse(&user_id).is_valid());
+        assert_eq!(user_id, phone.user_id("200"));
+        assert_ne!(user_id, phone.user_id("201"));
+        assert_eq!(Contact::parse("BR.abc").user_id("200"), "BR.abc");
     }
 
     #[test]

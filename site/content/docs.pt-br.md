@@ -113,6 +113,10 @@ Um app rodando em outro container precisa chegar ao wapit por um nome que resolv
 
 Uma reação só recebe o status `sent`, como na Meta, e uma reação a uma mensagem que não está na conversa, que também é uma reação ou que tem mais de 30 dias é aceita e depois falha com o erro 131009.
 
+## IDs de usuário por empresa
+
+Envie com `recipient` preenchido com um ID de usuário por empresa (BSUID), como `US.13491208655302741918`, no lugar de `to`, e a resposta identifica o contato como `user_id` em vez de `wa_id`. Quando um envio traz os dois, vale o `to`, como na Meta. Os webhooks seguem o formato que a Meta usa desde abril de 2026: `contacts[].user_id`, `messages[].from_user_id` e `statuses[].recipient_user_id` vêm sempre, e `wa_id`, `from` e `recipient_id` só nas conversas com número de telefone. O wapit deriva um BSUID estável para cada número a partir do número e do id da conta do WhatsApp Business. Templates de autenticação de um toque, sem toque e de copiar código não podem ir para um BSUID (131062). Destinatários de grupo (`recipient_type: group`) não são suportados.
+
 ## Códigos de erro
 
 Os envios são conferidos como a Meta confere. Um envio rejeitado devolve o erro da Meta ao seu app e fica na caixa de entrada, marcado, com o motivo em palavras simples.
@@ -130,6 +134,7 @@ Os envios são conferidos como a Meta confere. Um envio rejeitado devolve o erro
 | `131009` | O índice ou o tipo do botão não bate com o template |
 | `131047` | Mensagem livre fora da janela de atendimento de 24 horas |
 | `131053` | Um upload passa do tamanho que o tipo permite, ou um arquivo enviado é mandado como um tipo de mensagem ao qual não pertence |
+| `131062` | Um template de autenticação que precisa de número de telefone vai para um BSUID |
 
 ## Agindo como o usuário
 

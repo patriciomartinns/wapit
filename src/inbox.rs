@@ -575,14 +575,20 @@ impl Inbox {
         } else {
             "service".to_owned()
         };
-        let value = status_value(&StatusUpdate {
-            message_id: &message.id,
-            status,
-            recipient: &message.contact,
-            timestamp_ms: at,
-            pricing: priced.then_some(category.as_str()),
-            error: error.as_ref(),
-        });
+        let recipient = Contact::parse(&message.contact);
+        let recipient_name = self.store.contact_name(&app.id, &message.contact)?;
+        let value = status_value(
+            &app,
+            &StatusUpdate {
+                message_id: &message.id,
+                status,
+                recipient: &recipient,
+                recipient_name: recipient_name.as_deref(),
+                timestamp_ms: at,
+                pricing: priced.then_some(category.as_str()),
+                error: error.as_ref(),
+            },
+        );
 
         let webhook = self
             .webhooks
@@ -630,9 +636,17 @@ impl Inbox {
         Ok(())
     }
 
-    fn base_inbound(&self, contact: &str, kind: &str) -> serde_json::Map<String, Value> {
+    /// The fields every user message starts with. Since April 2026 Meta sends `from_user_id` always and `from`
+    /// only when it can share the phone number, which wapit has only for phone-number conversations.
+    fn base_inbound(&self, app: &App, contact: &str, kind: &str) -> serde_json::Map<String, Value> {
+        let contact = Contact::parse(contact);
         let mut message = serde_json::Map::new();
-        message.insert("from".into(), json!(contact));
+
+        if let Some(number) = contact.phone_number() {
+            message.insert("from".into(), json!(number));
+        }
+
+        message.insert("from_user_id".into(), json!(contact.user_id(&app.waba_id)));
         message.insert("id".into(), json!(new_message_id()));
         message.insert(
             "timestamp".into(),
@@ -686,7 +700,12 @@ impl Inbox {
 
         self.changed_conversation(&app.id, contact);
 
-        let value = inbound_value(contact, contact_name.as_deref(), &message);
+        let value = inbound_value(
+            app,
+            &Contact::parse(contact),
+            contact_name.as_deref(),
+            &message,
+        );
         let webhook = self
             .webhooks
             .send(
@@ -712,7 +731,7 @@ impl Inbox {
         text: &str,
     ) -> Result<Delivered, InboxError> {
         let app = self.require_app(app_id)?;
-        let mut message = self.base_inbound(contact, "text");
+        let mut message = self.base_inbound(&app, contact, "text");
         message.insert("text".into(), json!({ "body": text }));
         let rendered = Rendered {
             body: Some(text.to_owned()),
@@ -780,7 +799,7 @@ impl Inbox {
             object.insert("voice".into(), json!(false));
         }
 
-        let mut message = self.base_inbound(contact, &media.kind);
+        let mut message = self.base_inbound(&app, contact, &media.kind);
         message.insert(media.kind.clone(), Value::Object(object));
         let rendered = Rendered {
             caption: media
@@ -833,6 +852,7 @@ impl Inbox {
             json!({ "from": digits(&app.display_phone_number), "id": original.id }),
         );
         message.extend(self.base_inbound(
+            &app,
             &original.contact,
             if quick_reply { "button" } else { "interactive" },
         ));

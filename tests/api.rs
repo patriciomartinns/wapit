@@ -1053,16 +1053,135 @@ async fn a_bsuid_conversation_opens_by_its_raw_id() {
         "messaging_product": "whatsapp", "recipient": "BR.abc123", "type": "template",
         "template": { "name": "reordered", "language": { "code": "en_US" }, "components": [{ "type": "body", "parameters": [{ "type": "text", "text": "Mary" }, { "type": "text", "text": "101" }] }] },
     });
-    harness
+    let (_, sent) = harness
         .post("/v23.0/100/messages", &payload, "token-a")
         .await;
     let conversation = harness.ui_get("/api/conversations/a/BR.abc123").await;
+
+    assert_eq!(
+        sent["contacts"],
+        json!([{ "input": "BR.abc123", "user_id": "BR.abc123" }])
+    );
 
     assert_eq!(conversation["messages"].as_array().unwrap().len(), 1);
     assert_eq!(
         conversation["messages"][0]["rendered"]["body"],
         "Unit 101 of Mary"
     );
+}
+
+#[tokio::test]
+async fn a_message_from_a_bsuid_carries_only_the_user_id() {
+    let harness = harness().await;
+    let before = harness.received_count();
+    harness
+        .ui_post(
+            "/api/conversations/a/BR.13491208655302741918/messages",
+            &json!({ "kind": "text", "text": "Hi", "name": "Mary" }),
+        )
+        .await;
+    let value = value_of(&harness.webhook_after(before).await).clone();
+
+    assert_eq!(
+        value["contacts"],
+        json!([{ "profile": { "name": "Mary" }, "user_id": "BR.13491208655302741918" }])
+    );
+    assert_eq!(
+        value["messages"][0]["from_user_id"],
+        "BR.13491208655302741918"
+    );
+    assert!(value["messages"][0].get("from").is_none());
+}
+
+#[tokio::test]
+async fn phone_number_webhooks_carry_the_number_and_a_stable_user_id() {
+    let harness = harness().await;
+    let before = harness.received_count();
+    harness
+        .ui_post(
+            "/api/conversations/a/15550000002/messages",
+            &json!({ "kind": "text", "text": "Hi", "name": "Mary" }),
+        )
+        .await;
+    let inbound = value_of(&harness.webhook_after(before).await).clone();
+    let user_id = inbound["contacts"][0]["user_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    assert!(user_id.starts_with("US."));
+    assert_eq!(inbound["contacts"][0]["wa_id"], "15550000002");
+    assert_eq!(inbound["messages"][0]["from"], "15550000002");
+    assert_eq!(inbound["messages"][0]["from_user_id"], user_id.as_str());
+
+    let payload = json!({ "messaging_product": "whatsapp", "to": "15550000002", "type": "text", "text": { "body": "Hello" } });
+    let message_id = harness
+        .post("/v26.0/100/messages", &payload, "token-a")
+        .await
+        .1["messages"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let before = harness.received_count();
+    fire(&harness, &message_id, "delivered").await;
+    harness
+        .ui_post(
+            &format!("/api/messages/{}/status", encode(&message_id)),
+            &json!({ "status": "failed", "error_code": "131026" }),
+        )
+        .await;
+    let delivered = value_of(&harness.webhook_after(before).await).clone();
+    let failed = value_of(&harness.webhook_after(before + 1).await).clone();
+
+    assert_eq!(delivered["statuses"][0]["recipient_id"], "15550000002");
+    assert_eq!(
+        delivered["statuses"][0]["recipient_user_id"],
+        user_id.as_str()
+    );
+    assert_eq!(
+        delivered["contacts"],
+        json!([{ "profile": { "name": "Mary" }, "wa_id": "15550000002", "user_id": user_id }])
+    );
+    assert_eq!(failed["statuses"][0]["recipient_id"], "15550000002");
+    assert!(failed["statuses"][0].get("recipient_user_id").is_none());
+    assert!(failed.get("contacts").is_none());
+}
+
+#[tokio::test]
+async fn a_malformed_bsuid_recipient_is_rejected() {
+    let harness = harness().await;
+    let payload = json!({ "messaging_product": "whatsapp", "recipient": "13491208655302741918", "type": "text", "text": { "body": "Hi" } });
+    let (status, body) = harness
+        .post("/v26.0/100/messages", &payload, "token-a")
+        .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], 100);
+}
+
+#[tokio::test]
+async fn copy_code_authentication_templates_cannot_go_to_a_bsuid() {
+    let harness = harness().await;
+    harness
+        .post(
+            "/v26.0/200/message_templates",
+            &json!({ "name": "login_code", "language": "en_US", "category": "AUTHENTICATION", "components": [
+                { "type": "BODY", "text": "{{1}} is your code" },
+                { "type": "BUTTONS", "buttons": [{ "type": "OTP", "otp_type": "COPY_CODE", "text": "Copy code" }] },
+            ] }),
+            "token-a",
+        )
+        .await;
+    let payload = json!({
+        "messaging_product": "whatsapp", "recipient": "BR.abc123", "type": "template",
+        "template": { "name": "login_code", "language": { "code": "en_US" }, "components": [{ "type": "body", "parameters": [{ "type": "text", "text": "123456" }] }] },
+    });
+    let (status, body) = harness
+        .post("/v26.0/100/messages", &payload, "token-a")
+        .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], 131_062);
 }
 
 #[tokio::test]

@@ -13,6 +13,7 @@ use super::{BODY_LIMIT, content_disposition, media_response};
 use crate::config::App;
 use crate::graph_error::GraphError;
 use crate::inbox::{Inbox, InboxError};
+use crate::model::Contact;
 use crate::templates;
 
 static VERSION: LazyLock<Regex> =
@@ -314,9 +315,14 @@ fn post_message(
         sent["message_status"] = json!("accepted");
     }
 
+    let contact = match Contact::parse(&message.contact) {
+        Contact::Phone(number) => json!({ "input": input, "wa_id": number }),
+        Contact::User(user_id) => json!({ "input": input, "user_id": user_id }),
+    };
+
     Ok(json(
         StatusCode::OK,
-        json!({ "messaging_product": "whatsapp", "contacts": [{ "input": input, "wa_id": message.contact }], "messages": [sent] }),
+        json!({ "messaging_product": "whatsapp", "contacts": [contact], "messages": [sent] }),
     ))
 }
 
