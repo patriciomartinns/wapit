@@ -35,28 +35,85 @@ if (tabs.length > 0) {
   }
 }
 
-const themeButtons =document.querySelectorAll('[data-theme-choice]');
+const menus = [...document.querySelectorAll('.menu')];
+
+function closeMenu(menu, focusButton) {
+  const button = menu.querySelector('.menu-button');
+  if (button.getAttribute('aria-expanded') !== 'true') return;
+  button.setAttribute('aria-expanded', 'false');
+  menu.querySelector('.menu-list').hidden = true;
+  if (focusButton) button.focus();
+}
+
+function openMenu(menu) {
+  for (const other of menus) if (other !== menu) closeMenu(other, false);
+  menu.querySelector('.menu-button').setAttribute('aria-expanded', 'true');
+  menu.querySelector('.menu-list').hidden = false;
+  const items = [...menu.querySelectorAll('[role="menuitemradio"]')];
+  (items.find((item) => item.getAttribute('aria-checked') === 'true') ?? items[0]).focus();
+}
+
+for (const menu of menus) {
+  const button = menu.querySelector('.menu-button');
+  const items = [...menu.querySelectorAll('[role="menuitemradio"]')];
+  button.addEventListener('click', () => {
+    if (button.getAttribute('aria-expanded') === 'true') closeMenu(menu, false);
+    else openMenu(menu);
+  });
+  button.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    event.preventDefault();
+    openMenu(menu);
+  });
+  menu.querySelector('.menu-list').addEventListener('keydown', (event) => {
+    const index = items.indexOf(document.activeElement);
+    const next = { ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: items.length - 1 }[event.key];
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeMenu(menu, true);
+    } else if (event.key === 'Tab') {
+      closeMenu(menu, false);
+    } else if (next !== undefined) {
+      event.preventDefault();
+      items[(next + items.length) % items.length].focus();
+    }
+  });
+}
+
+document.addEventListener('click', (event) => {
+  for (const menu of menus) if (!menu.contains(event.target)) closeMenu(menu, false);
+});
+
+const themeChoices = [...document.querySelectorAll('[data-theme-choice]')];
+const themeButton = document.querySelector('[data-theme-button]');
 
 function showTheme() {
   const current = document.documentElement.dataset.theme ?? 'system';
-  for (const button of themeButtons) button.setAttribute('aria-pressed', String(button.dataset.themeChoice === current));
+  for (const choice of themeChoices) {
+    const checked = choice.dataset.themeChoice === current;
+    choice.setAttribute('aria-checked', String(checked));
+    if (checked && themeButton) {
+      themeButton.replaceChildren(choice.querySelector('svg').cloneNode(true));
+      themeButton.setAttribute('aria-label', `${themeButton.closest('.menu').querySelector('.menu-list').getAttribute('aria-label')}: ${choice.textContent.trim()}`);
+    }
+  }
 }
 
-for (const button of themeButtons) {
-  button.addEventListener('click', () => {
-    const choice = button.dataset.themeChoice;
-    if (choice === 'system') delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = choice;
+for (const choice of themeChoices) {
+  choice.addEventListener('click', (event) => {
+    const value = choice.dataset.themeChoice;
+    if (value === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = value;
     try {
-      if (choice === 'system') localStorage.removeItem('wapit.theme');
-      else localStorage.setItem('wapit.theme', choice);
+      if (value === 'system') localStorage.removeItem('wapit.theme');
+      else localStorage.setItem('wapit.theme', value);
     } catch {}
     showTheme();
+    closeMenu(choice.closest('.menu'), event.detail === 0);
   });
 }
 
 showTheme();
-
 
 const copied ={ en: 'Copied', 'pt-BR': 'Copiado' }[document.documentElement.lang] ?? 'Copied';
 
