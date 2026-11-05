@@ -59,7 +59,7 @@
 
   --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  --gutter: 96px;
+  --gutter: max(96px, calc((100vw - 1248px) / 2));
   --radius: 10px;
 
   color-scheme: light;
@@ -122,6 +122,9 @@ code, pre, kbd { font-family: var(--font-mono); }
 .nav a { font-weight: 500; text-decoration: none; }
 .nav a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .nav a[aria-current="page"] { text-decoration: underline; text-underline-offset: 4px; }
+.with-icon, .button { gap: 8px; }
+.nav .with-icon { display: inline-flex; align-items: center; }
+.icon { flex-shrink: 0; }
 .nav .mono { font-family: var(--font-mono); font-weight: 400; font-size: 14px; }
 
 .locale {
@@ -205,6 +208,7 @@ code, pre, kbd { font-family: var(--font-mono); }
 }
 .showcase img {
   display: block;
+  margin: 0 auto;
   width: 100%;
   max-width: 1248px;
   height: auto;
