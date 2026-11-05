@@ -810,6 +810,110 @@ async fn the_service_window_closes_24_hours_after_the_last_user_message() {
     assert_eq!(status["errors"][0]["code"], 131_047);
 }
 
+fn set_auto_statuses(harness: &Harness, statuses: &[&str]) {
+    let file = harness.config.path().join("apps.json");
+    let mut apps: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    apps["apps"][0]["auto_statuses"] = json!(statuses);
+    std::fs::write(file, apps.to_string()).unwrap();
+}
+
+async fn statuses_after(harness: &Harness, before: usize) -> Vec<Value> {
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    harness.received.lock().unwrap()[before..]
+        .iter()
+        .flat_map(|received| {
+            value_of(received)["statuses"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+fn reaction(message_id: &Value) -> Value {
+    json!({ "messaging_product": "whatsapp", "to": "15550000012", "type": "reaction", "reaction": { "message_id": message_id, "emoji": "👍" } })
+}
+
+#[tokio::test]
+async fn a_reaction_only_gets_the_sent_status() {
+    let harness = harness().await;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    set_auto_statuses(&harness, &["sent", "delivered", "read"]);
+    let inbound: Value = harness
+        .ui_post(
+            "/api/conversations/a/15550000012/messages",
+            &json!({ "kind": "text", "text": "Hi" }),
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    let before = harness.received_count();
+
+    let (status, sent) = harness
+        .post(
+            "/v26.0/100/messages",
+            &reaction(&inbound["message"]["id"]),
+            "token-a",
+        )
+        .await;
+    let statuses = statuses_after(&harness, before).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0]["status"], "sent");
+
+    let refused = harness
+        .ui_post(
+            &format!(
+                "/api/messages/{}/status",
+                encode(sent["messages"][0]["id"].as_str().unwrap())
+            ),
+            &json!({ "status": "read" }),
+        )
+        .await;
+    assert_eq!(refused.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn a_reaction_to_a_missing_message_fails_with_131009() {
+    let harness = harness().await;
+    harness
+        .ui_post(
+            "/api/conversations/a/15550000012/messages",
+            &json!({ "kind": "text", "text": "Hi" }),
+        )
+        .await;
+    let before = harness.received_count();
+
+    let (status, sent) = harness
+        .post(
+            "/v26.0/100/messages",
+            &reaction(&json!("wamid.missing")),
+            "token-a",
+        )
+        .await;
+    let failed = value_of(&harness.webhook_after(before).await)["statuses"][0].clone();
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(failed["id"], sent["messages"][0]["id"]);
+    assert_eq!(failed["status"], "failed");
+    assert_eq!(failed["errors"][0]["code"], 131_009);
+}
+
+#[tokio::test]
+async fn a_reaction_needs_the_message_id_it_reacts_to() {
+    let harness = harness().await;
+    let payload = json!({ "messaging_product": "whatsapp", "to": "15550000012", "type": "reaction", "reaction": { "emoji": "👍" } });
+    let (status, body) = harness
+        .post("/v26.0/100/messages", &payload, "token-a")
+        .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], 100);
+}
+
 #[tokio::test]
 async fn a_bsuid_conversation_opens_by_its_raw_id() {
     let harness = harness().await;

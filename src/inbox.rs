@@ -59,6 +59,18 @@ pub const FAILURE_REASONS: &[FailureReason] = &[
     },
 ];
 
+const REENGAGEMENT: &FailureReason = &FAILURE_REASONS[1];
+
+/// Meta does not deliver a reaction whose target is missing, is itself a reaction or is over 30 days old,
+/// and reports it with a failed status carrying 131009.
+const REACTION_TARGET_INVALID: &FailureReason = &FailureReason {
+    code: 131_009,
+    title: "Parameter value is not valid",
+    details: "The message to react to does not exist in this chat, is a reaction or is more than 30 days old.",
+};
+
+const REACTION_WINDOW_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+
 const MEDIA_KINDS: &[&str] = &["image", "document", "audio", "video", "sticker"];
 
 #[derive(Debug, thiserror::Error)]
@@ -289,9 +301,17 @@ impl Inbox {
             created_at: self.clock.now_ms(),
         };
 
+        let failure = if outbound.outside_window {
+            Some(REENGAGEMENT)
+        } else if message.kind == "reaction" && !self.can_react_to(&message)? {
+            Some(REACTION_TARGET_INVALID)
+        } else {
+            None
+        };
+
         self.store.record_message(&message, None, None)?;
         self.changed_conversation(&app.id, &message.contact);
-        self.schedule_auto_statuses(app, &message.id, outbound.outside_window);
+        self.schedule_auto_statuses(app, &message, failure);
 
         Ok((message, outbound.input))
     }
@@ -349,14 +369,39 @@ impl Inbox {
         Ok(())
     }
 
-    fn schedule_auto_statuses(self: &Arc<Self>, app: &App, message_id: &str, outside_window: bool) {
-        let statuses: Vec<MessageStatus> = if outside_window {
+    fn can_react_to(&self, reaction: &Message) -> Result<bool, InboxError> {
+        let Some(target_id) = reaction
+            .payload
+            .pointer("/reaction/message_id")
+            .and_then(Value::as_str)
+        else {
+            return Ok(false);
+        };
+        let now = self.clock.now_ms();
+
+        Ok(self.store.message(target_id)?.is_some_and(|target| {
+            target.app_id == reaction.app_id
+                && target.contact == reaction.contact
+                && target.kind != "reaction"
+                && target.status != MessageStatus::Rejected
+                && now - target.created_at <= REACTION_WINDOW_MS
+        }))
+    }
+
+    fn schedule_auto_statuses(
+        self: &Arc<Self>,
+        app: &App,
+        message: &Message,
+        failure: Option<&'static FailureReason>,
+    ) {
+        let statuses: Vec<MessageStatus> = if failure.is_some() {
             vec![MessageStatus::Failed]
         } else {
             app.auto_statuses
                 .iter()
                 .map(|status| MessageStatus::parse(status))
                 .filter(MessageStatus::automatic)
+                .filter(|status| message.kind != "reaction" || *status == MessageStatus::Sent)
                 .collect()
         };
 
@@ -365,14 +410,13 @@ impl Inbox {
         }
 
         let inbox = Arc::clone(self);
-        let message_id = message_id.to_owned();
+        let message_id = message.id.clone();
 
         tokio::spawn(async move {
             for status in statuses {
                 tokio::time::sleep(inbox.auto_status_delay).await;
-                let code = (status == MessageStatus::Failed).then_some("131047");
 
-                match inbox.fire_status(&message_id, &status, code).await {
+                match inbox.fire(&message_id, &status, failure).await {
                     Ok(_) => {}
                     Err(InboxError::NotFound(_)) => return,
                     Err(error) => {
@@ -386,11 +430,27 @@ impl Inbox {
         });
     }
 
+    /// Fires a status the inbox user picked. A failure takes one of the codes in `FAILURE_REASONS`.
     pub async fn fire_status(
         &self,
         message_id: &str,
         status: &MessageStatus,
         failure_code: Option<&str>,
+    ) -> Result<Webhook, InboxError> {
+        let reason = if *status == MessageStatus::Failed {
+            Some(failure_reason(failure_code)?)
+        } else {
+            None
+        };
+
+        self.fire(message_id, status, reason).await
+    }
+
+    async fn fire(
+        &self,
+        message_id: &str,
+        status: &MessageStatus,
+        reason: Option<&FailureReason>,
     ) -> Result<Webhook, InboxError> {
         let message = self
             .store
@@ -402,11 +462,19 @@ impl Inbox {
                 InboxError::NotFound(Problem::new("message_not_found", "Sent message not found"))
             })?;
         let app = self.require_app(&message.app_id)?;
-        let reason = if *status == MessageStatus::Failed {
-            Some(failure_reason(failure_code)?)
-        } else {
-            None
-        };
+
+        if message.kind == "reaction"
+            && matches!(status, MessageStatus::Delivered | MessageStatus::Read)
+        {
+            return Err(InboxError::Invalid(
+                Problem::new(
+                    "reaction_sent_only",
+                    "Meta only sends the sent status for a reaction",
+                )
+                .detail(status.as_str()),
+            ));
+        }
+
         let error = reason.map(|reason| {
             json!({
                 "code": reason.code,

@@ -769,10 +769,16 @@ pub fn validate_outbound(
         },
         "template" => render_template(fields, context.templates, &mut issues)?,
         "interactive" => render_interactive(fields)?,
-        "reaction" => Rendered {
-            body: Some(string(fields.get("emoji")).unwrap_or_default().to_owned()),
-            ..Rendered::of_kind("reaction")
-        },
+        "reaction" => {
+            string(fields.get("message_id"))
+                .filter(|id| !id.trim().is_empty())
+                .ok_or_else(|| GraphError::required("reaction['message_id']"))?;
+
+            Rendered {
+                body: Some(string(fields.get("emoji")).unwrap_or_default().to_owned()),
+                ..Rendered::of_kind("reaction")
+            }
+        }
         media if MEDIA_TYPES.contains(&media) => {
             let id = string(fields.get("id")).filter(|id| !id.is_empty());
             let link = string(fields.get("link")).filter(|link| !link.is_empty());

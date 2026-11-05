@@ -137,6 +137,8 @@ An app running in another container must reach wapit by a name that resolves the
 | `DELETE /{waba_id}/message_templates?name=` | Deletes a template, or one language of it with `hsm_id` |
 | `GET /{waba_id}`, `GET /{phone_number_id}` | Account and phone number fields, with an empty pricing analytics result |
 
+A reaction gets only the `sent` status, as on Meta, and a reaction to a message that is not in the chat, is itself a reaction or is more than 30 days old is accepted and then fails with error 131009.
+
 Template sends are checked against the stored template like Meta does: name and language (132001), paused or disabled templates (132015, 132016), parameter counts in the header, body and URL buttons (132000), line breaks or long runs of spaces in body parameters (132018), text too long after substitution (132005), header format (132012) and button index and type (131009). A rejected send returns Meta's error to your app and stays in the inbox, flagged, with the reason in plain words.
 
 ## Acting as the user

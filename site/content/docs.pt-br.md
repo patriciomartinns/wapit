@@ -111,6 +111,8 @@ Um app rodando em outro container precisa chegar ao wapit por um nome que resolv
 | `DELETE /{waba_id}/message_templates?name=` | Apaga um template, ou um idioma dele com `hsm_id` |
 | `GET /{waba_id}`, `GET /{phone_number_id}` | Campos da conta e do número, com resultado vazio de análise de preços |
 
+Uma reação só recebe o status `sent`, como na Meta, e uma reação a uma mensagem que não está na conversa, que também é uma reação ou que tem mais de 30 dias é aceita e depois falha com o erro 131009.
+
 ## Códigos de erro
 
 Os envios são conferidos como a Meta confere. Um envio rejeitado devolve o erro da Meta ao seu app e fica na caixa de entrada, marcado, com o motivo em palavras simples.
