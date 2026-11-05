@@ -46,7 +46,7 @@ Or build from source with Rust 1.89 or newer:
 cargo install --locked --git https://github.com/patriciomartinns/wapit
 ```
 
-Prebuilt binaries for macOS, Linux and Windows are on the [releases page](https://github.com/patriciomartinns/wapit/releases).
+Prebuilt binaries for macOS, Linux and Windows are on the [releases page](https://github.com/patriciomartinns/wapit/releases/latest). On Windows, download `wapit-<version>-x86_64-pc-windows-msvc.zip`, unzip it and run `wapit.exe`. Each release lists the SHA-256 of every archive in `SHA256SUMS`.
 
 ## Quick start
 
@@ -142,6 +142,8 @@ Template sends are checked against the stored template like Meta does: name and 
 ## Acting as the user
 
 In a conversation you can type a message, attach a file, tap a reply, quick reply or list button, or select one of your app's messages to mark it delivered, read or failed with a real Meta error code. Every action is posted to the app's webhook in Meta's payload format. The inspector shows the payload your app sent, each webhook delivery with your app's response, and lets you send a webhook again. Apps with a `verify_token` can also run the subscription handshake from the inbox.
+
+wapit delivers each webhook once. Unlike Meta, which retries a failed delivery, it does not retry on its own: if your app is down or answers with an error, the delivery is marked failed in the inspector and you send it again from there.
 
 ## Security
 

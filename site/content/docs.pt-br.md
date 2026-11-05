@@ -25,7 +25,7 @@ Ou compile a partir do código, com Rust 1.89 ou mais novo:
 cargo install --locked --git https://github.com/patriciomartinns/wapit
 ```
 
-Os binários prontos para macOS, Linux e Windows ficam na página de releases: https://github.com/patriciomartinns/wapit/releases
+No Windows, baixe `wapit-<versão>-x86_64-pc-windows-msvc.zip` da release mais recente, descompacte e rode `wapit.exe`. A mesma página tem os binários prontos para macOS e Linux e um arquivo `SHA256SUMS` para conferir cada um: https://github.com/patriciomartinns/wapit/releases/latest
 
 ## Primeiros passos
 
@@ -133,6 +133,8 @@ Os envios são conferidos como a Meta confere. Um envio rejeitado devolve o erro
 Numa conversa você pode digitar uma mensagem, anexar um arquivo, tocar num botão de resposta, de resposta rápida ou de lista, ou escolher uma mensagem do seu app para marcar como entregue, lida ou falha, com um código de erro real da Meta. Cada ação vai para o webhook do app no formato de payload da Meta, assinada com o app secret em `X-Hub-Signature-256`.
 
 O inspetor mostra o payload que o seu app enviou, cada entrega de webhook com a resposta do app, e permite enviar um webhook de novo. Apps com `verify_token` também podem rodar a verificação da assinatura pela caixa de entrada.
+
+O wapit entrega cada webhook uma vez só. Ao contrário da Meta, que reenvia uma entrega que falhou, ele não reenvia sozinho: se o seu app estiver fora do ar ou responder com erro, a entrega fica marcada como falha no inspetor e você envia de novo por lá.
 
 ## Segurança
 

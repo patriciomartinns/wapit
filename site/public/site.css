@@ -186,6 +186,30 @@ code, pre, kbd { font-family: var(--font-mono); }
 .with-icon, .button { gap: 8px; }
 .nav .with-icon { display: inline-flex; align-items: center; }
 .icon { flex-shrink: 0; }
+.stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px 1px 6px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+}
+.stars::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  background: currentColor;
+  clip-path: polygon(50% 0%, 61.8% 35.3%, 100% 38.2%, 69.1% 61.8%, 80.9% 100%, 50% 76.4%, 19.1% 100%, 30.9% 61.8%, 0% 38.2%, 38.2% 35.3%);
+}
+.stars[hidden] { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .stars:not([hidden]) { animation: confirm 320ms var(--ease-out); }
+}
 .nav .mono { font-family: var(--font-mono); font-weight: 400; font-size: 14px; }
 
 .locale {
