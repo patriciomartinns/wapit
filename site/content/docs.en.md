@@ -132,7 +132,7 @@ Sends are checked like Meta checks them. A rejected send returns Meta's error to
 
 ## Acting as the user
 
-In a conversation you can type a message, attach a file, tap a reply, quick reply or list button, or select one of your app's messages to mark it delivered, read or failed with a real Meta error code. Every action is posted to the app's webhook in Meta's payload format, signed with the app secret in `X-Hub-Signature-256`.
+In a conversation you can type a message, attach a file, tap a reply, quick reply or list button, or select one of your app's messages to mark it delivered, read, played (voice messages only) or failed with a real Meta error code. Every action is posted to the app's webhook in Meta's payload format, signed with the app secret in `X-Hub-Signature-256`. As on Meta, the pricing object comes with the `sent` status and with the first of `delivered` or `read`, never with both.
 
 The inspector shows the payload your app sent, each webhook delivery with your app's response, and lets you send a webhook again. Apps with a `verify_token` can also run the subscription handshake from the inbox.
 

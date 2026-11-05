@@ -34,6 +34,7 @@ pub enum MessageStatus {
     Sent,
     Delivered,
     Read,
+    Played,
     Failed,
     Rejected,
     Received,
@@ -50,6 +51,7 @@ impl MessageStatus {
             "sent" => Self::Sent,
             "delivered" => Self::Delivered,
             "read" => Self::Read,
+            "played" => Self::Played,
             "failed" => Self::Failed,
             "rejected" => Self::Rejected,
             "received" => Self::Received,
@@ -64,6 +66,7 @@ impl MessageStatus {
             Self::Sent => "sent",
             Self::Delivered => "delivered",
             Self::Read => "read",
+            Self::Played => "played",
             Self::Failed => "failed",
             Self::Rejected => "rejected",
             Self::Received => "received",
@@ -79,7 +82,8 @@ impl MessageStatus {
             Self::Sent => 1,
             Self::Delivered => 2,
             Self::Read => 3,
-            Self::Failed => 4,
+            Self::Played => 4,
+            Self::Failed => 5,
             _ => 0,
         }
     }
@@ -93,13 +97,13 @@ impl MessageStatus {
     pub fn simulatable(&self) -> bool {
         matches!(
             self,
-            Self::Sent | Self::Delivered | Self::Read | Self::Failed
+            Self::Sent | Self::Delivered | Self::Read | Self::Played | Self::Failed
         )
     }
 
     /// Statuses an app may list in `auto_statuses`, fired in order after each accepted send.
     pub fn automatic(&self) -> bool {
-        self.simulatable() && *self != Self::Failed
+        matches!(self, Self::Sent | Self::Delivered | Self::Read)
     }
 }
 
@@ -384,6 +388,7 @@ mod tests {
             "sent",
             "delivered",
             "read",
+            "played",
             "failed",
             "rejected",
             "received",
@@ -401,7 +406,7 @@ mod tests {
 
     #[test]
     fn only_later_statuses_rank_higher() {
-        let order = ["sent", "delivered", "read", "failed"].map(MessageStatus::parse);
+        let order = ["sent", "delivered", "read", "played", "failed"].map(MessageStatus::parse);
 
         assert!(order.windows(2).all(|pair| pair[0].rank() < pair[1].rank()));
         assert_eq!(MessageStatus::Accepted.rank(), 0);

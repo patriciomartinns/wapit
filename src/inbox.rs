@@ -160,6 +160,15 @@ fn new_media_id() -> String {
     format!("{first}{rest}")
 }
 
+fn is_voice_message(message: &Message) -> bool {
+    message.kind == "audio"
+        && message
+            .payload
+            .pointer("/audio/voice")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+}
+
 async fn write_media_file(path: &std::path::Path, data: &[u8]) -> Result<(), StoreError> {
     if let Err(error) = tokio::fs::write(path, data).await {
         let _ = tokio::fs::remove_file(path).await;
@@ -475,6 +484,24 @@ impl Inbox {
             ));
         }
 
+        if *status == MessageStatus::Played && !is_voice_message(&message) {
+            return Err(InboxError::Invalid(Problem::new(
+                "played_voice_only",
+                "Meta only sends the played status for a voice message",
+            )));
+        }
+
+        let priced = match status {
+            MessageStatus::Sent => true,
+            MessageStatus::Delivered | MessageStatus::Read => !self
+                .store
+                .statuses(std::slice::from_ref(&message.id))?
+                .iter()
+                .any(|event| {
+                    matches!(event.status, MessageStatus::Delivered | MessageStatus::Read)
+                }),
+            _ => false,
+        };
         let error = reason.map(|reason| {
             json!({
                 "code": reason.code,
@@ -514,7 +541,7 @@ impl Inbox {
             status,
             recipient: &message.contact,
             timestamp_ms: at,
-            category: &category,
+            pricing: priced.then_some(category.as_str()),
             error: error.as_ref(),
         });
 

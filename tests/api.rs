@@ -626,6 +626,82 @@ async fn a_read_status_from_the_inbox_carries_the_outbound_id_and_pricing() {
     assert_eq!(status["pricing"]["category"], "utility");
 }
 
+async fn fire(harness: &Harness, message_id: &str, status: &str) -> reqwest::Response {
+    harness
+        .ui_post(
+            &format!("/api/messages/{}/status", encode(message_id)),
+            &json!({ "status": status }),
+        )
+        .await
+}
+
+#[tokio::test]
+async fn pricing_comes_with_sent_and_the_first_of_delivered_or_read() {
+    let harness = harness().await;
+    let message_id = harness
+        .post("/v26.0/100/messages", &valid_template(), "token-a")
+        .await
+        .1["messages"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let before = harness.received_count();
+
+    for status in ["sent", "delivered", "read"] {
+        fire(&harness, &message_id, status).await;
+    }
+    let statuses = statuses_after(&harness, before).await;
+
+    assert_eq!(statuses.len(), 3);
+    assert_eq!(statuses[0]["pricing"]["category"], "utility");
+    assert_eq!(statuses[1]["pricing"]["category"], "utility");
+    assert!(statuses[2].get("pricing").is_none());
+}
+
+#[tokio::test]
+async fn only_a_voice_message_can_be_played() {
+    let harness = harness().await;
+    harness
+        .ui_post(
+            "/api/conversations/a/15550000000/messages",
+            &json!({ "kind": "text", "text": "Hi" }),
+        )
+        .await;
+    let send = |voice: bool| json!({ "messaging_product": "whatsapp", "to": "15550000000", "type": "audio", "audio": { "link": "https://example.com/a.ogg", "voice": voice } });
+    let voice = harness
+        .post("/v26.0/100/messages", &send(true), "token-a")
+        .await
+        .1;
+    let plain = harness
+        .post("/v26.0/100/messages", &send(false), "token-a")
+        .await
+        .1;
+    let before = harness.received_count();
+
+    let played = fire(
+        &harness,
+        voice["messages"][0]["id"].as_str().unwrap(),
+        "played",
+    )
+    .await;
+    let status = value_of(&harness.webhook_after(before).await)["statuses"][0].clone();
+    let refused = fire(
+        &harness,
+        plain["messages"][0]["id"].as_str().unwrap(),
+        "played",
+    )
+    .await;
+
+    assert_eq!(played.status(), StatusCode::OK);
+    assert_eq!(status["status"], "played");
+    assert!(status.get("pricing").is_none());
+    assert_eq!(refused.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        refused.json::<Value>().await.unwrap()["code"],
+        "played_voice_only"
+    );
+}
+
 #[tokio::test]
 async fn a_failed_status_carries_a_meta_error() {
     let harness = harness().await;

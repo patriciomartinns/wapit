@@ -380,6 +380,7 @@ function statusActions(message) {
     if (message.direction !== 'out' || message.status === 'rejected' || message.id !== view.selectedId) return '';
 
     const reaction = message.type === 'reaction';
+    const voice = message.type === 'audio' && message.payload?.audio?.voice === true;
     const reasons = view.state.failure_reasons.map((reason) => `<option value="${reason.code}">${escapeHtml(t('simulate.failureOption', { code: reason.code, title: reason.title.slice(0, 48) }))}</option>`).join('');
 
     return `
@@ -387,6 +388,7 @@ function statusActions(message) {
             <span class="label">${t('simulate.label')}</span>
             ${reaction ? '' : `<button type="button" data-status="delivered" data-key="status:delivered">${t('simulate.delivered')}</button>
             <button type="button" data-status="read" data-key="status:read">${t('simulate.read')}</button>`}
+            ${voice ? `<button type="button" data-status="played" data-key="status:played">${t('simulate.played')}</button>` : ''}
             <select data-failure data-key="status:failed" aria-label="${escapeHtml(t('simulate.failureLabel'))}"><option value="">${t('simulate.failure')}</option>${reasons}</select>
             <button type="button" class="danger" data-send-failure data-key="status:send-failure" disabled>${t('simulate.sendFailure')}</button>
         </div>`;

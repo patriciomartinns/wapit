@@ -51,7 +51,8 @@ pub struct StatusUpdate<'a> {
     pub status: &'a MessageStatus,
     pub recipient: &'a str,
     pub timestamp_ms: i64,
-    pub category: &'a str,
+    /// The pricing category, when this status carries the message's pricing.
+    pub pricing: Option<&'a str>,
     pub error: Option<&'a Value>,
 }
 
@@ -63,12 +64,12 @@ pub fn status_value(update: &StatusUpdate<'_>) -> Value {
         "recipient_id": update.recipient,
     });
 
-    if *update.status != MessageStatus::Failed {
-        let service = update.category == "service";
+    if let Some(category) = update.pricing {
+        let service = category == "service";
         status["pricing"] = json!({
             "billable": !service,
             "pricing_model": "PMP",
-            "category": update.category,
+            "category": category,
             "type": if service { "free_customer_service" } else { "regular" },
         });
     }
