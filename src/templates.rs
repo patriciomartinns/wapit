@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use base64::Engine;
 use rand::RngExt;
 use serde_json::Value;
 
@@ -203,7 +206,11 @@ fn build(existing: &[Template], input: &Value) -> Result<Template, GraphError> {
     })
 }
 
+const EDITABLE: &[&str] = &["APPROVED", "REJECTED", "PAUSED"];
+const MAX_BULK_DELETE: usize = 100;
+
 /// Applies a `POST /{template_id}` edit, which may change the components and the category.
+/// Like Meta, only approved, rejected or paused templates can be edited, and an approved one keeps its category.
 fn apply_edit(template: &mut Template, input: &Value) -> Result<(), GraphError> {
     if input.get("components").is_none() && input.get("category").is_none() {
         return Err(invalid(
@@ -211,25 +218,176 @@ fn apply_edit(template: &mut Template, input: &Value) -> Result<(), GraphError> 
         ));
     }
 
+    let status = template.status.to_uppercase();
+
+    if !EDITABLE.contains(&status.as_str()) {
+        return Err(invalid(format!(
+            "Only templates with an APPROVED, REJECTED or PAUSED status can be edited, this one is {status}"
+        )));
+    }
+
+    let category = input.get("category").map(|_| category(input)).transpose()?;
+
+    if let Some(category) = &category
+        && status == "APPROVED"
+        && template
+            .category
+            .as_deref()
+            .is_none_or(|current| !current.eq_ignore_ascii_case(category))
+    {
+        return Err(invalid(
+            "You cannot edit the category of an approved template.",
+        ));
+    }
+
     if input.get("components").is_some() {
         template.components = components(input)?;
     }
 
-    if input.get("category").is_some() {
-        template.category = Some(category(input)?);
+    if category.is_some() {
+        template.category = category;
     }
 
     Ok(())
 }
 
-/// The app's templates in file order, as `GET /{waba_id}/message_templates` lists them.
-pub fn list(config: &ConfigStore, app_id: &str, name: Option<&str>) -> Vec<Template> {
-    config
+/// The filters and paging of a `GET /{waba_id}/message_templates` request.
+#[derive(Debug, Default)]
+pub struct ListQuery {
+    name: Option<String>,
+    statuses: Vec<String>,
+    categories: Vec<String>,
+    languages: Vec<String>,
+    limit: Option<usize>,
+    after: Option<usize>,
+    before: Option<usize>,
+}
+
+/// Graph API list parameters come as one value, a comma separated list or a JSON array.
+fn list_parameter(raw: Option<&String>) -> Vec<String> {
+    let Some(raw) = raw.map(|raw| raw.trim()).filter(|raw| !raw.is_empty()) else {
+        return Vec::new();
+    };
+
+    serde_json::from_str::<Vec<String>>(raw)
+        .unwrap_or_else(|_| raw.split(',').map(str::to_owned).collect())
+        .into_iter()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn encode_cursor(position: usize) -> String {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(position.to_string())
+}
+
+fn decode_cursor(field: &str, cursor: &str) -> Result<usize, GraphError> {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(cursor)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .and_then(|text| text.parse().ok())
+        .ok_or_else(|| invalid(format!("{field}: {cursor} is not a valid cursor")))
+}
+
+impl ListQuery {
+    pub fn parse(query: &HashMap<String, String>) -> Result<Self, GraphError> {
+        let limit = query
+            .get("limit")
+            .map(|limit| {
+                limit
+                    .trim()
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|limit| *limit > 0)
+                    .ok_or_else(|| invalid(format!("limit: {limit} is not a positive number")))
+            })
+            .transpose()?;
+
+        Ok(Self {
+            name: query.get("name").filter(|name| !name.is_empty()).cloned(),
+            statuses: list_parameter(query.get("status")),
+            categories: list_parameter(query.get("category")),
+            languages: list_parameter(query.get("language")),
+            limit,
+            after: query
+                .get("after")
+                .map(|cursor| decode_cursor("after", cursor))
+                .transpose()?,
+            before: query
+                .get("before")
+                .map(|cursor| decode_cursor("before", cursor))
+                .transpose()?,
+        })
+    }
+
+    fn matches(&self, template: &Template) -> bool {
+        let any = |wanted: &[String], value: Option<&str>| {
+            wanted.is_empty()
+                || value.is_some_and(|value| {
+                    wanted
+                        .iter()
+                        .any(|wanted| wanted.eq_ignore_ascii_case(value))
+                })
+        };
+
+        self.name.as_ref().is_none_or(|name| &template.name == name)
+            && any(&self.statuses, Some(&template.status))
+            && any(&self.categories, template.category.as_deref())
+            && any(&self.languages, Some(&template.language))
+    }
+
+    fn page_link(&self, base_url: &str, cursor: (&str, usize), limit: usize) -> String {
+        let mut parameters = vec![format!("limit={limit}")];
+
+        for (key, values) in [
+            ("status", &self.statuses),
+            ("category", &self.categories),
+            ("language", &self.languages),
+        ] {
+            if !values.is_empty() {
+                parameters.push(format!("{key}={}", values.join(",")));
+            }
+        }
+
+        if let Some(name) = &self.name {
+            parameters.push(format!("name={name}"));
+        }
+
+        parameters.push(format!("{}={}", cursor.0, encode_cursor(cursor.1)));
+
+        format!("{base_url}?{}", parameters.join("&"))
+    }
+}
+
+/// The app's templates in file order, as `GET /{waba_id}/message_templates` lists them: filtered, and paged when
+/// the request sets `limit`. `base_url` is the endpoint the `next` and `previous` links point to.
+pub fn list(config: &ConfigStore, app_id: &str, query: &ListQuery, base_url: &str) -> Value {
+    let matching: Vec<Template> = config
         .templates_for(app_id)
         .iter()
-        .filter(|template| name.is_none_or(|name| template.name == name))
+        .filter(|template| query.matches(template))
         .cloned()
-        .collect()
+        .collect();
+    let total = matching.len();
+    let limit = query.limit.unwrap_or(total.max(1));
+    let (start, end) = match (query.after, query.before) {
+        (Some(after), _) => (after.min(total), (after + limit).min(total)),
+        (None, Some(before)) => (before.min(total).saturating_sub(limit), before.min(total)),
+        (None, None) => (0, limit.min(total)),
+    };
+    let mut paging =
+        json!({ "cursors": { "before": encode_cursor(start), "after": encode_cursor(end) } });
+
+    if end < total {
+        paging["next"] = json!(query.page_link(base_url, ("after", end), limit));
+    }
+
+    if start > 0 {
+        paging["previous"] = json!(query.page_link(base_url, ("before", start), limit));
+    }
+
+    json!({ "data": &matching[start..end], "paging": paging })
 }
 
 /// Creates a template at the end of the file and answers like Meta: its id, status and category.
@@ -258,28 +416,82 @@ pub fn edit(
     })
 }
 
-/// Deletes every language of the named template, or only the one whose id is `hsm_id`.
-pub fn delete(
+/// Deletes every language of the named template, only the one whose id is `hsm_id`, or every id in `hsm_ids`.
+/// A bulk delete is all or nothing: one unknown id and nothing is deleted. Disabled templates cannot be deleted.
+pub fn delete<S: std::hash::BuildHasher>(
     config: &ConfigStore,
     app_id: &str,
-    name: Option<&str>,
-    hsm_id: Option<&str>,
+    query: &HashMap<String, String, S>,
 ) -> Result<(), GraphError> {
-    let name = name
-        .filter(|name| !name.is_empty())
-        .ok_or_else(|| GraphError::required("name"))?;
+    let name = query.get("name").filter(|name| !name.is_empty());
+    let hsm_id = query.get("hsm_id").filter(|id| !id.is_empty());
+    let hsm_ids = list_parameter(query.get("hsm_ids"));
 
-    config.edit_templates(app_id, |all| {
-        let before = all.len();
-        all.retain(|template| {
-            !(template.name == name && hsm_id.is_none_or(|id| template.id.as_deref() == Some(id)))
-        });
+    if !hsm_ids.is_empty() {
+        if name.is_some() || hsm_id.is_some() {
+            return Err(invalid("hsm_ids cannot be combined with name or hsm_id"));
+        }
 
-        if all.len() == before {
-            return Err(GraphError::invalid_parameter(format!(
-                "Message template \"{name}\" was not found"
+        if hsm_ids.len() > MAX_BULK_DELETE {
+            return Err(invalid(format!(
+                "hsm_ids: at most {MAX_BULK_DELETE} template ids per request, received {}",
+                hsm_ids.len()
             )));
         }
+    }
+
+    config.edit_templates(app_id, |all| {
+        let doomed: Vec<usize> = if hsm_ids.is_empty() {
+            let name = name.ok_or_else(|| GraphError::required("name"))?;
+            let doomed: Vec<usize> = all
+                .iter()
+                .enumerate()
+                .filter(|(_, template)| {
+                    &template.name == name
+                        && hsm_id.is_none_or(|id| template.id.as_ref() == Some(id))
+                })
+                .map(|(index, _)| index)
+                .collect();
+
+            if doomed.is_empty() {
+                return Err(GraphError::invalid_parameter(format!(
+                    "Message template \"{name}\" was not found"
+                )));
+            }
+
+            doomed
+        } else {
+            hsm_ids
+                .iter()
+                .map(|id| {
+                    all.iter()
+                        .position(|template| template.id.as_ref() == Some(id))
+                        .ok_or_else(|| {
+                            GraphError::invalid_parameter(format!(
+                                "hsm_ids: template {id} was not found, nothing was deleted"
+                            ))
+                        })
+                })
+                .collect::<Result<_, _>>()?
+        };
+
+        if let Some(disabled) = doomed
+            .iter()
+            .map(|index| &all[*index])
+            .find(|template| template.status.eq_ignore_ascii_case("DISABLED"))
+        {
+            return Err(invalid(format!(
+                "Message template \"{}\" is disabled and cannot be deleted",
+                disabled.name
+            )));
+        }
+
+        let mut index = 0;
+        all.retain(|_| {
+            let keep = !doomed.contains(&index);
+            index += 1;
+            keep
+        });
 
         Ok(())
     })

@@ -1938,6 +1938,149 @@ async fn template_writes_tell_the_inbox_to_refresh() {
     assert_eq!(next_change(&mut events).await["app_id"], "a");
 }
 
+async fn list_templates(harness: &Harness, query: &str) -> Value {
+    harness
+        .client
+        .get(format!(
+            "{}/v26.0/200/message_templates?{query}",
+            harness.graph
+        ))
+        .bearer_auth("token-a")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+fn names(listed: &Value) -> Vec<&str> {
+    listed["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|template| template["name"].as_str().unwrap())
+        .collect()
+}
+
+#[tokio::test]
+async fn templates_are_listed_with_filters_and_pages() {
+    let harness = harness().await;
+    harness
+        .post(
+            "/v26.0/200/message_templates",
+            &json!({ "name": "promo", "language": "pt_BR", "category": "MARKETING", "components": [{ "type": "BODY", "text": "Sale" }] }),
+            "token-a",
+        )
+        .await;
+
+    assert_eq!(
+        names(&list_templates(&harness, "category=MARKETING").await),
+        ["promo"]
+    );
+    assert_eq!(
+        names(&list_templates(&harness, "language=en_US&status=approved").await),
+        ["order_ready", "reordered"]
+    );
+    assert_eq!(
+        names(&list_templates(&harness, "status=[\"PAUSED\"]").await),
+        Vec::<&str>::new()
+    );
+
+    let first = list_templates(&harness, "limit=2").await;
+    assert_eq!(names(&first), ["order_ready", "reordered"]);
+    let next = first["paging"]["next"].as_str().unwrap();
+    assert!(next.starts_with(&format!(
+        "{}/200/message_templates?limit=2&after=",
+        harness.graph
+    )));
+
+    let second: Value = harness
+        .client
+        .get(next)
+        .bearer_auth("token-a")
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(names(&second), ["promo"]);
+    assert!(second["paging"].get("next").is_none());
+    assert!(second["paging"]["previous"].is_string());
+}
+
+#[tokio::test]
+async fn an_approved_template_keeps_its_category() {
+    let harness = harness().await;
+    let id = list_templates(&harness, "name=order_ready").await["data"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (status, body) = harness
+        .post(
+            &format!("/v26.0/{id}"),
+            &json!({ "category": "MARKETING" }),
+            "token-a",
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], 100);
+    assert_eq!(
+        body["error"]["error_data"]["details"],
+        "You cannot edit the category of an approved template."
+    );
+}
+
+#[tokio::test]
+async fn templates_can_be_deleted_in_bulk_all_or_nothing() {
+    let harness = harness().await;
+    let listed = list_templates(&harness, "").await;
+    let ids: Vec<&str> = listed["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|template| template["id"].as_str().unwrap())
+        .collect();
+    let delete = |query: String| {
+        harness
+            .client
+            .delete(format!(
+                "{}/v26.0/200/message_templates?{query}",
+                harness.graph
+            ))
+            .bearer_auth("token-a")
+            .send()
+    };
+
+    let partial = delete(format!("hsm_ids=[\"{}\",\"999\"]", ids[0]))
+        .await
+        .unwrap();
+    assert_eq!(partial.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        list_templates(&harness, "").await["data"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+
+    let mixed = delete(format!("hsm_ids=[\"{}\"]&name=order_ready", ids[0]))
+        .await
+        .unwrap();
+    assert_eq!(mixed.status(), StatusCode::BAD_REQUEST);
+
+    let all = delete(format!("hsm_ids=[\"{}\",\"{}\"]", ids[0], ids[1]))
+        .await
+        .unwrap();
+    assert_eq!(
+        all.json::<Value>().await.unwrap(),
+        json!({ "success": true })
+    );
+    assert_eq!(list_templates(&harness, "").await["data"], json!([]));
+}
+
 #[tokio::test]
 async fn concurrent_template_creates_all_land() {
     let harness = Arc::new(harness().await);

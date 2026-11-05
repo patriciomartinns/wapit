@@ -13,6 +13,7 @@ use super::{BODY_LIMIT, content_disposition, media_response};
 use crate::config::App;
 use crate::graph_error::GraphError;
 use crate::inbox::{Inbox, InboxError};
+use crate::templates;
 
 static VERSION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^v\d+\.\d+$").expect("valid regex"));
@@ -181,26 +182,18 @@ async fn route(state: &GraphState, request: Request) -> Result<Response, InboxEr
             state.inbox.delete_media(&app, &id).await?;
             Ok(json(StatusCode::OK, json!({ "success": true })))
         }
-        (&Method::GET, _, _) if templates_of_app => {
-            let templates = state
+        (&Method::GET, _, _) if templates_of_app => Ok(json(
+            StatusCode::OK,
+            state
                 .inbox
-                .list_templates(&app, query.get("name").map(String::as_str));
-
-            Ok(json(
-                StatusCode::OK,
-                json!({ "data": templates, "paging": { "cursors": { "before": "MAZDZD", "after": "MjQZD" } } }),
-            ))
-        }
+                .list_templates(&app, &templates::ListQuery::parse(&query)?),
+        )),
         (&Method::POST, _, _) if templates_of_app => Ok(json(
             StatusCode::OK,
             state.inbox.create_template(&app, &template_input(&body)?)?,
         )),
         (&Method::DELETE, _, _) if templates_of_app => {
-            state.inbox.delete_template(
-                &app,
-                query.get("name").map(String::as_str),
-                query.get("hsm_id").map(String::as_str),
-            )?;
+            state.inbox.delete_template(&app, &query)?;
             Ok(json(StatusCode::OK, json!({ "success": true })))
         }
         _ => Err(GraphError::unsupported(method.as_str(), &id).into()),

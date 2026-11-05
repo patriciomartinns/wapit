@@ -105,10 +105,10 @@ Um app rodando em outro container precisa chegar ao wapit por um nome que resolv
 | `POST /{phone_number_id}/messages` | Texto, template, interativa (botões de resposta, lista, botão de URL), mídia, reação, localização, contatos. `status: read`, com indicador de digitação opcional |
 | `POST /{phone_number_id}/media` | Envia um arquivo e devolve o id. Só aceita os tipos que a Meta suporta, até 5 MB para imagens, 16 MB para áudio e vídeo, 100 MB para documentos e 500 KB para figurinhas |
 | `GET /{media_id}`, `DELETE /{media_id}` | Metadados da mídia com URL de download, e exclusão |
-| `GET /{waba_id}/message_templates` | Os templates locais, com filtro opcional por `name` |
+| `GET /{waba_id}/message_templates` | Os templates locais, com filtros por `name`, `status`, `category` e `language`, e paginados com `limit`, `after` e `before` |
 | `POST /{waba_id}/message_templates` | Cria um template, já aprovado |
-| `POST /{template_id}` | Edita os componentes ou a categoria de um template |
-| `DELETE /{waba_id}/message_templates?name=` | Apaga um template, ou um idioma dele com `hsm_id` |
+| `POST /{template_id}` | Edita os componentes ou a categoria de um template. Só templates aprovados, rejeitados ou pausados podem ser editados, e um aprovado mantém a categoria |
+| `DELETE /{waba_id}/message_templates?name=` | Apaga um template, um idioma dele com `hsm_id`, ou até 100 templates de uma vez com `hsm_ids`, tudo ou nada. Templates desativados não podem ser apagados |
 | `GET /{waba_id}`, `GET /{phone_number_id}` | Campos da conta e do número, com resultado vazio de análise de preços |
 
 Uma reação só recebe o status `sent`, como na Meta, e uma reação a uma mensagem que não está na conversa, que também é uma reação ou que tem mais de 30 dias é aceita e depois falha com o erro 131009.

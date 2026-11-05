@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 
 use crate::clock::Clock;
-use crate::config::{App, ConfigStore, Template};
+use crate::config::{App, ConfigStore};
 use crate::graph_error::GraphError;
 use crate::media;
 use crate::model::{
@@ -982,8 +982,10 @@ impl Inbox {
         self.require_app(app_id).map(|_| ())
     }
 
-    pub fn list_templates(&self, app: &App, name: Option<&str>) -> Vec<Template> {
-        templates::list(&self.config, &app.id, name)
+    pub fn list_templates(&self, app: &App, query: &templates::ListQuery) -> Value {
+        let base_url = format!("{}/{}/message_templates", self.public_api_url, app.waba_id);
+
+        templates::list(&self.config, &app.id, query, &base_url)
     }
 
     pub fn create_template(&self, app: &App, input: &Value) -> Result<Value, InboxError> {
@@ -1008,10 +1010,9 @@ impl Inbox {
     pub fn delete_template(
         &self,
         app: &App,
-        name: Option<&str>,
-        hsm_id: Option<&str>,
+        query: &std::collections::HashMap<String, String, impl std::hash::BuildHasher>,
     ) -> Result<(), InboxError> {
-        templates::delete(&self.config, &app.id, name, hsm_id)?;
+        templates::delete(&self.config, &app.id, query)?;
         self.changed(Change::of(&app.id, None));
 
         Ok(())

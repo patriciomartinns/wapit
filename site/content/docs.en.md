@@ -105,10 +105,10 @@ An app running in another container must reach wapit by a name that resolves the
 | `POST /{phone_number_id}/messages` | Text, template, interactive (reply buttons, list, call to action URL), media, reaction, location, contacts. `status: read`, with an optional typing indicator |
 | `POST /{phone_number_id}/media` | Uploads a file and returns its id. Only Meta's supported types are accepted, up to 5 MB for images, 16 MB for audio and video, 100 MB for documents and 500 KB for stickers |
 | `GET /{media_id}`, `DELETE /{media_id}` | Media metadata with a download URL, and deletion |
-| `GET /{waba_id}/message_templates` | The local templates, optionally filtered by `name` |
+| `GET /{waba_id}/message_templates` | The local templates, filtered by `name`, `status`, `category` and `language`, and paged with `limit`, `after` and `before` |
 | `POST /{waba_id}/message_templates` | Creates a template, approved right away |
-| `POST /{template_id}` | Edits a template's components or category |
-| `DELETE /{waba_id}/message_templates?name=` | Deletes a template, or one language of it with `hsm_id` |
+| `POST /{template_id}` | Edits a template's components or category. Only approved, rejected or paused templates can be edited, and an approved one keeps its category |
+| `DELETE /{waba_id}/message_templates?name=` | Deletes a template, one language of it with `hsm_id`, or up to 100 templates at once with `hsm_ids`, all or nothing. Disabled templates cannot be deleted |
 | `GET /{waba_id}`, `GET /{phone_number_id}` | Account and phone number fields, with an empty pricing analytics result |
 
 A reaction gets only the `sent` status, as on Meta, and a reaction to a message that is not in the chat, is itself a reaction or is more than 30 days old is accepted and then fails with error 131009.
