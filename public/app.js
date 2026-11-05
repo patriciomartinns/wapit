@@ -203,7 +203,12 @@ function renderBanner() {
 }
 
 function statusLabel(message) {
-    if (message.direction === 'out') return t(`status.out.${message.status}`);
+    if (message.direction === 'out') {
+        const key = `status.out.${message.status}`;
+        const label = t(key);
+
+        return label === key ? message.status : label;
+    }
 
     return message.status.startsWith('read') ? t('status.in.read') : t('status.in.received');
 }
