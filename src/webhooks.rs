@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use sha2::Sha256;
 
 use crate::config::App;
-use crate::model::{Webhook, digits, now_ms};
+use crate::model::{MessageStatus, Webhook, digits, now_ms};
 use crate::store::{Store, StoreError};
 
 const TIMEOUT: Duration = Duration::from_secs(20);
@@ -47,7 +47,7 @@ pub fn inbound_value(contact: &str, name: Option<&str>, message: &Value) -> Valu
 
 pub struct StatusUpdate<'a> {
     pub message_id: &'a str,
-    pub status: &'a str,
+    pub status: &'a MessageStatus,
     pub recipient: &'a str,
     pub timestamp_ms: i64,
     pub category: &'a str,
@@ -57,12 +57,12 @@ pub struct StatusUpdate<'a> {
 pub fn status_value(update: &StatusUpdate<'_>) -> Value {
     let mut status = json!({
         "id": update.message_id,
-        "status": update.status,
+        "status": update.status.as_str(),
         "timestamp": (update.timestamp_ms / 1000).to_string(),
         "recipient_id": update.recipient,
     });
 
-    if update.status != "failed" {
+    if *update.status != MessageStatus::Failed {
         let service = update.category == "service";
         status["pricing"] = json!({
             "billable": !service,

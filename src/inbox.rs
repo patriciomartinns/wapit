@@ -10,7 +10,8 @@ use tokio::sync::broadcast;
 use crate::config::{App, ConfigStore, Template};
 use crate::graph_error::GraphError;
 use crate::model::{
-    Button, Direction, Media, MediaRef, Message, Rendered, TemplateRef, Webhook, digits, now_ms,
+    Button, Direction, Media, MediaRef, Message, MessageStatus, Rendered, TemplateRef, Webhook,
+    digits, now_ms,
 };
 use crate::store::{Store, StoreError};
 use crate::templates;
@@ -281,7 +282,7 @@ impl Inbox {
             contact: outbound.contact,
             direction: Direction::Out,
             kind: outbound.kind,
-            status: "accepted".into(),
+            status: MessageStatus::Accepted,
             payload,
             rendered: outbound.rendered,
             issues: outbound.issues,
@@ -331,7 +332,7 @@ impl Inbox {
                 contact: contact.to_owned(),
                 direction: Direction::Out,
                 kind: kind.clone(),
-                status: "rejected".into(),
+                status: MessageStatus::Rejected,
                 payload,
                 rendered: Rendered {
                     template,
@@ -351,13 +352,13 @@ impl Inbox {
     }
 
     fn schedule_auto_statuses(self: &Arc<Self>, app: &App, message_id: &str, outside_window: bool) {
-        let statuses: Vec<String> = if outside_window {
-            vec!["failed".into()]
+        let statuses: Vec<MessageStatus> = if outside_window {
+            vec![MessageStatus::Failed]
         } else {
             app.auto_statuses
                 .iter()
-                .filter(|status| matches!(status.as_str(), "sent" | "delivered" | "read"))
-                .cloned()
+                .map(|status| MessageStatus::parse(status))
+                .filter(MessageStatus::automatic)
                 .collect()
         };
 
@@ -371,7 +372,7 @@ impl Inbox {
         tokio::spawn(async move {
             for status in statuses {
                 tokio::time::sleep(inbox.auto_status_delay).await;
-                let code = (status == "failed").then_some("131047");
+                let code = (status == MessageStatus::Failed).then_some("131047");
 
                 match inbox.fire_status(&message_id, &status, code).await {
                     Ok(_) => {}
@@ -390,18 +391,20 @@ impl Inbox {
     pub async fn fire_status(
         &self,
         message_id: &str,
-        status: &str,
+        status: &MessageStatus,
         failure_code: Option<&str>,
     ) -> Result<Webhook, InboxError> {
         let message = self
             .store
             .message(message_id)?
-            .filter(|message| message.direction == Direction::Out && message.status != "rejected")
+            .filter(|message| {
+                message.direction == Direction::Out && message.status != MessageStatus::Rejected
+            })
             .ok_or_else(|| {
                 InboxError::NotFound(Problem::new("message_not_found", "Sent message not found"))
             })?;
         let app = self.require_app(&message.app_id)?;
-        let reason = if status == "failed" {
+        let reason = if *status == MessageStatus::Failed {
             Some(failure_reason(failure_code)?)
         } else {
             None
@@ -479,8 +482,14 @@ impl Inbox {
                 ))
             })?;
 
-        self.store
-            .set_inbound_status(&message.id, if typing { "read+typing" } else { "read" })?;
+        self.store.set_inbound_status(
+            &message.id,
+            &if typing {
+                MessageStatus::ReadTyping
+            } else {
+                MessageStatus::Read
+            },
+        )?;
         self.changed(Change {
             typing: Some(typing),
             ..Change::of(&app.id, Some(&message.contact))
@@ -528,7 +537,7 @@ impl Inbox {
             contact: contact.to_owned(),
             direction: Direction::In,
             kind: message["type"].as_str().unwrap_or_default().to_owned(),
-            status: "received".into(),
+            status: MessageStatus::Received,
             payload: message.clone(),
             rendered,
             issues: Vec::new(),

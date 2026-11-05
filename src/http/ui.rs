@@ -20,7 +20,7 @@ use tokio_stream::wrappers::BroadcastStream;
 
 use super::content_disposition;
 use crate::inbox::{Delivered, InboundMedia, Inbox, InboxError, Problem};
-use crate::model::digits;
+use crate::model::{MessageStatus, digits};
 use crate::views::{Change, StateSummary};
 
 #[derive(RustEmbed)]
@@ -370,7 +370,7 @@ async fn tap(State(state): State<UiState>, Path(id): Path<String>, body: Bytes) 
 
 #[derive(Deserialize)]
 struct StatusRequest {
-    status: String,
+    status: MessageStatus,
     #[serde(default)]
     error_code: Option<String>,
 }
@@ -381,16 +381,13 @@ async fn fire_status(
     body: Bytes,
 ) -> ApiResult {
     let body: StatusRequest = parse_body(&body)?;
-    if !matches!(
-        body.status.as_str(),
-        "sent" | "delivered" | "read" | "failed"
-    ) {
+    if !body.status.simulatable() {
         return Err(ApiError::new(
             StatusCode::UNPROCESSABLE_ENTITY,
             "invalid_status",
             format!("Invalid status {}", body.status),
         )
-        .detail(body.status));
+        .detail(body.status.as_str()));
     }
 
     ok(state

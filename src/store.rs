@@ -5,7 +5,8 @@ use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
 use serde_json::Value;
 
 use crate::model::{
-    Conversation, Direction, Issue, Media, Message, Rendered, StatusEvent, Webhook, now_ms,
+    Conversation, Direction, Issue, Media, Message, MessageStatus, Rendered, StatusEvent, Webhook,
+    now_ms,
 };
 
 const MIGRATIONS: &[&str] = &[r"
@@ -65,18 +66,6 @@ const MIGRATIONS: &[&str] = &[r"
     );
     CREATE INDEX webhooks_message ON webhooks (message_id);
 "];
-
-/// Delivery order of outbound statuses. A status only replaces the current one when it is further along,
-/// so a late automatic `delivered` never overwrites a `read` fired by hand.
-pub fn status_rank(status: &str) -> u8 {
-    match status {
-        "sent" => 1,
-        "delivered" => 2,
-        "read" => 3,
-        "failed" => 4,
-        _ => 0,
-    }
-}
 
 pub struct Store {
     db: Mutex<Connection>,
@@ -199,15 +188,20 @@ impl Store {
 
     pub fn conversations(&self) -> Result<Vec<(Conversation, Option<Message>)>, StoreError> {
         let db = self.db();
-        let mut statement = db.prepare(
+        let flagged = MessageStatus::FLAGGED
+            .iter()
+            .map(|status| format!("'{status}'"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut statement = db.prepare(&format!(
             "SELECT m.app_id, m.contact, c.name, MAX(m.created_at) AS last_at, COUNT(*) AS total,
-                SUM(CASE WHEN m.issues != '[]' OR m.status IN ('rejected', 'failed') THEN 1 ELSE 0 END) AS flagged,
+                SUM(CASE WHEN m.issues != '[]' OR m.status IN ({flagged}) THEN 1 ELSE 0 END) AS flagged,
                 (SELECT id FROM messages l WHERE l.app_id = m.app_id AND l.contact = m.contact ORDER BY l.created_at DESC, l.rowid DESC LIMIT 1) AS last_id
              FROM messages m
              LEFT JOIN contacts c ON c.app_id = m.app_id AND c.wa_id = m.contact
              GROUP BY m.app_id, m.contact
-             ORDER BY last_at DESC",
-        )?;
+             ORDER BY last_at DESC"
+        ))?;
         let conversations = statement
             .query_map([], |row| {
                 Ok(Conversation {
@@ -239,7 +233,7 @@ impl Store {
     pub fn record_status(
         &self,
         id: &str,
-        status: &str,
+        status: &MessageStatus,
         error: Option<&Value>,
         at: i64,
     ) -> Result<bool, StoreError> {
@@ -256,31 +250,31 @@ impl Store {
             return Ok(false);
         };
 
-        if status_rank(status) >= status_rank(&current) {
+        if status.rank() >= MessageStatus::parse(&current).rank() {
             transaction.execute(
                 "UPDATE messages SET status = ?1 WHERE id = ?2",
-                params![status, id],
+                params![status.as_str(), id],
             )?;
         }
 
         transaction.execute(
             "INSERT INTO statuses (message_id, status, error, created_at) VALUES (?1, ?2, ?3, ?4)",
-            params![id, status, error.map(Value::to_string), at],
+            params![id, status.as_str(), error.map(Value::to_string), at],
         )?;
         transaction.commit()?;
 
         Ok(true)
     }
 
-    pub fn set_inbound_status(&self, id: &str, status: &str) -> Result<(), StoreError> {
+    pub fn set_inbound_status(&self, id: &str, status: &MessageStatus) -> Result<(), StoreError> {
         let db = self.db();
         db.execute(
             "UPDATE messages SET status = ?1 WHERE id = ?2",
-            params![status, id],
+            params![status.as_str(), id],
         )?;
         db.execute(
             "INSERT INTO statuses (message_id, status, error, created_at) VALUES (?1, ?2, NULL, ?3)",
-            params![id, status, now_ms()],
+            params![id, status.as_str(), now_ms()],
         )?;
 
         Ok(())
@@ -301,7 +295,7 @@ impl Store {
             Ok(StatusEvent {
                 id: row.get("id")?,
                 message_id: row.get("message_id")?,
-                status: row.get("status")?,
+                status: MessageStatus::parse(&row.get::<_, String>("status")?),
                 error: json_column(row, "error")?,
                 created_at: row.get("created_at")?,
             })
@@ -476,7 +470,7 @@ fn insert_message(db: &Connection, message: &Message) -> Result<(), StoreError> 
             message.contact,
             message.direction.as_str(),
             message.kind,
-            message.status,
+            message.status.as_str(),
             message.payload.to_string(),
             serde_json::to_string(&message.rendered).unwrap_or_default(),
             serde_json::to_string(&message.issues).unwrap_or_default(),
@@ -618,7 +612,7 @@ fn to_message(row: &Row<'_>) -> rusqlite::Result<Message> {
             Direction::Out
         },
         kind: row.get("type")?,
-        status: row.get("status")?,
+        status: MessageStatus::parse(&row.get::<_, String>("status")?),
         payload: serde_json::from_str(&payload).unwrap_or(Value::Null),
         rendered: serde_json::from_str(&rendered).unwrap_or_else(|_| Rendered::of_kind("unknown")),
         issues: Issue::parse_all(&issues),
@@ -656,7 +650,7 @@ mod tests {
             contact: "15550000000".into(),
             direction: Direction::In,
             kind: "image".into(),
-            status: "received".into(),
+            status: MessageStatus::Received,
             payload: json!({}),
             rendered: Rendered::of_kind("image"),
             issues: Vec::new(),

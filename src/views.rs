@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::model::{Conversation, Direction, Message, StatusEvent, Webhook};
+use crate::model::{Conversation, Direction, Message, MessageStatus, StatusEvent, Webhook};
 
 /// A change the inbox page reacts to. `app_id` is `*` when everything may have changed.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -61,7 +61,7 @@ pub struct LastMessage {
     pub direction: Direction,
     pub kind: String,
     pub body: String,
-    pub status: String,
+    pub status: MessageStatus,
 }
 
 impl LastMessage {

@@ -17,6 +17,102 @@ impl Direction {
     }
 }
 
+/// Where a message stands. Outbound messages move from `accepted` through Meta's statuses, or are `rejected`
+/// at send time; inbound ones are `received` and then read by the app, with or without a typing indicator.
+/// `Other` keeps a status written by an older release readable instead of failing the row.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MessageStatus {
+    Accepted,
+    Sent,
+    Delivered,
+    Read,
+    Failed,
+    Rejected,
+    Received,
+    ReadTyping,
+    Other(String),
+}
+
+impl MessageStatus {
+    pub const FLAGGED: &[Self] = &[Self::Rejected, Self::Failed];
+
+    pub fn parse(raw: &str) -> Self {
+        match raw {
+            "accepted" => Self::Accepted,
+            "sent" => Self::Sent,
+            "delivered" => Self::Delivered,
+            "read" => Self::Read,
+            "failed" => Self::Failed,
+            "rejected" => Self::Rejected,
+            "received" => Self::Received,
+            "read+typing" => Self::ReadTyping,
+            other => Self::Other(other.to_owned()),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::Sent => "sent",
+            Self::Delivered => "delivered",
+            Self::Read => "read",
+            Self::Failed => "failed",
+            Self::Rejected => "rejected",
+            Self::Received => "received",
+            Self::ReadTyping => "read+typing",
+            Self::Other(other) => other,
+        }
+    }
+
+    /// Delivery order of outbound statuses. A status only replaces the current one when it is further along,
+    /// so a late automatic `delivered` never overwrites a `read` fired by hand.
+    pub fn rank(&self) -> u8 {
+        match self {
+            Self::Sent => 1,
+            Self::Delivered => 2,
+            Self::Read => 3,
+            Self::Failed => 4,
+            _ => 0,
+        }
+    }
+
+    /// Whether the inbox counts the message as a problem in its conversation.
+    pub fn flagged(&self) -> bool {
+        Self::FLAGGED.contains(self)
+    }
+
+    /// Statuses the inbox can fire for an outbound message.
+    pub fn simulatable(&self) -> bool {
+        matches!(
+            self,
+            Self::Sent | Self::Delivered | Self::Read | Self::Failed
+        )
+    }
+
+    /// Statuses an app may list in `auto_statuses`, fired in order after each accepted send.
+    pub fn automatic(&self) -> bool {
+        self.simulatable() && *self != Self::Failed
+    }
+}
+
+impl std::fmt::Display for MessageStatus {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+impl Serialize for MessageStatus {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for MessageStatus {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Self::parse(&String::deserialize(deserializer)?))
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Rendered {
     pub kind: String,
@@ -132,7 +228,7 @@ pub struct Message {
     pub direction: Direction,
     #[serde(rename = "type")]
     pub kind: String,
-    pub status: String,
+    pub status: MessageStatus,
     pub payload: Value,
     pub rendered: Rendered,
     pub issues: Vec<Issue>,
@@ -145,7 +241,7 @@ pub struct Message {
 pub struct StatusEvent {
     pub id: i64,
     pub message_id: String,
-    pub status: String,
+    pub status: MessageStatus,
     pub error: Option<Value>,
     pub created_at: i64,
 }
@@ -198,4 +294,42 @@ pub fn now_ms() -> i64 {
 
 pub fn digits(value: &str) -> String {
     value.chars().filter(char::is_ascii_digit).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MessageStatus;
+
+    #[test]
+    fn statuses_round_trip_and_unknown_ones_survive() {
+        for raw in [
+            "accepted",
+            "sent",
+            "delivered",
+            "read",
+            "failed",
+            "rejected",
+            "received",
+            "read+typing",
+            "queued",
+        ] {
+            assert_eq!(MessageStatus::parse(raw).as_str(), raw);
+        }
+
+        assert_eq!(
+            MessageStatus::parse("queued"),
+            MessageStatus::Other("queued".into())
+        );
+    }
+
+    #[test]
+    fn only_later_statuses_rank_higher() {
+        let order = ["sent", "delivered", "read", "failed"].map(MessageStatus::parse);
+
+        assert!(order.windows(2).all(|pair| pair[0].rank() < pair[1].rank()));
+        assert_eq!(MessageStatus::Accepted.rank(), 0);
+        assert!(MessageStatus::Failed.flagged() && MessageStatus::Rejected.flagged());
+        assert!(!MessageStatus::Read.flagged());
+        assert!(!MessageStatus::Failed.automatic() && MessageStatus::Failed.simulatable());
+    }
 }
