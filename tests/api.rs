@@ -1268,7 +1268,10 @@ async fn copy_code_authentication_templates_cannot_go_to_a_bsuid() {
         .await;
     let payload = json!({
         "messaging_product": "whatsapp", "recipient": "BR.abc123", "type": "template",
-        "template": { "name": "login_code", "language": { "code": "en_US" }, "components": [{ "type": "body", "parameters": [{ "type": "text", "text": "123456" }] }] },
+        "template": { "name": "login_code", "language": { "code": "en_US" }, "components": [
+            { "type": "body", "parameters": [{ "type": "text", "text": "123456" }] },
+            { "type": "button", "sub_type": "url", "index": "0", "parameters": [{ "type": "text", "text": "123456" }] },
+        ] },
     });
     let (status, body) = harness
         .post("/v26.0/100/messages", &payload, "token-a")
@@ -2704,4 +2707,51 @@ async fn a_user_id_only_finds_its_own_app_s_conversation() {
 
     assert_eq!(found["messages"].as_array().unwrap().len(), 1);
     assert_eq!(found["messages"][0]["app_id"], "b");
+}
+
+#[tokio::test]
+async fn an_authentication_copy_code_button_copies_the_code_instead_of_linking_to_whatsapp() {
+    let harness = harness().await;
+    for (name, button) in [
+        (
+            "login_link",
+            json!({ "type": "URL", "text": "Copy code", "url": "https://www.whatsapp.com/otp/code/?otp_type=COPY_CODE&code=otp{{1}}" }),
+        ),
+        (
+            "login_otp",
+            json!({ "type": "OTP", "otp_type": "COPY_CODE", "text": "Copy code" }),
+        ),
+    ] {
+        harness
+            .post(
+                "/v26.0/200/message_templates",
+                &json!({ "name": name, "language": "en_US", "category": "AUTHENTICATION", "components": [
+                    { "type": "BODY", "text": "{{1}} is your code" },
+                    { "type": "BUTTONS", "buttons": [button] },
+                ] }),
+                "token-a",
+            )
+            .await;
+        let payload = json!({
+            "messaging_product": "whatsapp", "to": "15550000031", "type": "template",
+            "template": { "name": name, "language": { "code": "en_US" }, "components": [
+                { "type": "body", "parameters": [{ "type": "text", "text": "624398" }] },
+                { "type": "button", "sub_type": "url", "index": "0", "parameters": [{ "type": "text", "text": "AB&C$98" }] },
+            ] },
+        });
+        let (status, sent) = harness
+            .post("/v26.0/100/messages", &payload, "token-a")
+            .await;
+        let id = sent["messages"][0]["id"].as_str().unwrap().to_owned();
+        let shown = harness
+            .ui_get(&format!("/api/messages/{}", encode(&id)))
+            .await;
+
+        assert_eq!(status, StatusCode::OK, "{name}");
+        assert_eq!(
+            shown["rendered"]["buttons"],
+            json!([{ "type": "copy_code", "text": "Copy code", "payload": "AB&C$98" }]),
+            "{name}"
+        );
+    }
 }

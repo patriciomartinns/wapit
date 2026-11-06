@@ -140,7 +140,7 @@ Os envios são conferidos como a Meta confere. Um envio rejeitado devolve o erro
 
 ## Agindo como o usuário
 
-Numa conversa você pode digitar uma mensagem, anexar um arquivo, tocar num botão de resposta, de resposta rápida ou de lista, ou escolher uma mensagem do seu app para marcar como entregue, lida, ouvida (só mensagens de voz) ou falha, com um código de erro real da Meta. Cada ação vai para o webhook do app no formato de payload da Meta, assinada com o app secret em `X-Hub-Signature-256`. Como na Meta, o objeto de preço vem com o status `sent` e com o primeiro entre `delivered` e `read`, nunca com os dois.
+Numa conversa você pode digitar uma mensagem, anexar um arquivo, tocar num botão de resposta, de resposta rápida ou de lista, copiar o código de um template de autenticação (nada chega ao app, como no celular), ou escolher uma mensagem do seu app para marcar como entregue, lida, ouvida (só mensagens de voz) ou falha, com um código de erro real da Meta. Cada ação vai para o webhook do app no formato de payload da Meta, assinada com o app secret em `X-Hub-Signature-256`. Como na Meta, o objeto de preço vem com o status `sent` e com o primeiro entre `delivered` e `read`, nunca com os dois.
 
 O inspetor mostra o payload que o seu app enviou, cada entrega de webhook com a resposta do app, e permite enviar um webhook de novo. Apps com `verify_token` também podem rodar a verificação da assinatura pela caixa de entrada.
 

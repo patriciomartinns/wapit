@@ -464,7 +464,14 @@ fn render_template_buttons(
                 .and_then(|component| string(component.get("sub_type")))
                 .map(str::to_lowercase);
 
-            if component.is_some() && sub_type.as_deref() != Some(kind.to_lowercase().as_str()) {
+            // Authentication buttons are sent as `sub_type: url` with the code, whatever their OTP type.
+            let expected = if kind == "OTP" {
+                "url".to_owned()
+            } else {
+                kind.to_lowercase()
+            };
+
+            if component.is_some() && sub_type.as_deref() != Some(expected.as_str()) {
                 return Err(GraphError::invalid(format!(
                     "buttons: button at index {index} is {kind}, received sub_type {}",
                     sub_type.as_deref().unwrap_or("(missing)")
@@ -482,6 +489,17 @@ fn render_template_buttons(
                         false,
                         false,
                     )?;
+
+                    if is_otp_link(url) {
+                        return Ok(Button {
+                            kind: "copy_code".into(),
+                            text: button.text.clone(),
+                            payload: values.values().next().cloned(),
+                            description: None,
+                            id: None,
+                            url: None,
+                        });
+                    }
 
                     Ok(Button {
                         kind: "url".into(),
@@ -504,6 +522,23 @@ fn render_template_buttons(
                         kind: "quick_reply".into(),
                         text: button.text.clone(),
                         payload: Some(payload),
+                        description: None,
+                        id: None,
+                        url: None,
+                    })
+                }
+                "OTP" => {
+                    let location = format!("button at index {index} type Url");
+                    let parameters = component_parameters(component);
+                    let [parameter] = parameters.as_slice() else {
+                        return Err(GraphError::count_mismatch(&location, parameters.len(), 1));
+                    };
+                    let code = Some(parameter_text(parameter, &location)?);
+
+                    Ok(Button {
+                        kind: "copy_code".into(),
+                        text: button.text.clone(),
+                        payload: code,
                         description: None,
                         id: None,
                         url: None,
@@ -546,6 +581,12 @@ fn render_template_buttons(
             }
         })
         .collect()
+}
+
+/// Meta lists an authentication template's copy code button as a URL button on `www.whatsapp.com/otp/code/`.
+/// The phone never opens that link: it shows a button that copies the code bound to the URL's placeholder.
+fn is_otp_link(url: &str) -> bool {
+    url.starts_with("https://www.whatsapp.com/otp/code")
 }
 
 fn copy_code(parameter: &Json, index: usize) -> Result<String, GraphError> {
@@ -943,16 +984,20 @@ fn is_unsupported_for_user_ids(payload: &Json, templates: &[Template]) -> bool {
         .flat_map(|template| &template.components)
         .flat_map(|component| component.buttons.as_deref().unwrap_or_default())
         .any(|button| {
-            button.kind.eq_ignore_ascii_case("OTP")
-                && button
-                    .extra
-                    .get("otp_type")
-                    .and_then(Value::as_str)
-                    .is_some_and(|otp| {
-                        ["ONE_TAP", "ZERO_TAP", "COPY_CODE"]
-                            .iter()
-                            .any(|unsupported| otp.eq_ignore_ascii_case(unsupported))
-                    })
+            let otp_link = button.kind.eq_ignore_ascii_case("URL")
+                && button.url.as_deref().is_some_and(is_otp_link);
+
+            otp_link
+                || button.kind.eq_ignore_ascii_case("OTP")
+                    && button
+                        .extra
+                        .get("otp_type")
+                        .and_then(Value::as_str)
+                        .is_some_and(|otp| {
+                            ["ONE_TAP", "ZERO_TAP", "COPY_CODE"]
+                                .iter()
+                                .any(|unsupported| otp.eq_ignore_ascii_case(unsupported))
+                        })
         })
 }
 

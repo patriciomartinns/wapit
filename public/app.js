@@ -31,6 +31,15 @@ async function api(path, options = {}) {
     return json;
 }
 
+async function copyCode(code) {
+    try {
+        await navigator.clipboard.writeText(code);
+        toast(t('toast.codeCopied', { code }));
+    } catch {
+        toast(t('toast.codeNotCopied', { code }), true);
+    }
+}
+
 function toast(message, isError = false) {
     const element = $('#toast');
     element.classList.toggle('error', isError);
@@ -336,7 +345,7 @@ function buttonIcon(type) {
 
 function buttonTarget(button) {
     if (button.type === 'url' || button.type === 'phone_number') return button.url ?? '';
-    if (button.type === 'quick_reply') return button.payload ?? '';
+    if (button.type === 'quick_reply' || button.type === 'copy_code') return button.payload ?? '';
 
     return button.id ?? button.url ?? '';
 }
@@ -355,6 +364,10 @@ function buttonsHtml(message) {
 
         if (button.type === 'url') {
             return `<a class="action" href="${escapeHtml(safeHref(button.url))}" target="_blank" rel="noreferrer"${title}>${label}</a>`;
+        }
+
+        if (button.type === 'copy_code' && button.payload) {
+            return `<button type="button" class="action" data-copy-code="${escapeHtml(button.payload)}" data-key="copy:${escapeHtml(message.id)}:${index}" title="${escapeHtml(button.payload)}">${label}</button>`;
         }
 
         if (button.type === 'phone_number' && button.url) {
@@ -506,6 +519,7 @@ function paintConversation() {
             selectMessage(message.id);
         });
         element.querySelectorAll('[data-tap]').forEach((button) => button.addEventListener('click', () => tap(message.id, Number(button.dataset.tap))));
+        element.querySelectorAll('[data-copy-code]').forEach((button) => button.addEventListener('click', () => copyCode(button.dataset.copyCode)));
         element.querySelectorAll('[data-status]').forEach((button) => button.addEventListener('click', () => fireStatus(message.id, button.dataset.status, null)));
         const failure = element.querySelector('[data-failure]');
         const sendFailure = element.querySelector('[data-send-failure]');
