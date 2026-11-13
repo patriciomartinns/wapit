@@ -469,6 +469,7 @@ function paintConversation() {
     $('#composer').hidden = conversation === null;
 
     if (conversation === null) {
+        view.paintedKey = null;
         const any = view.state.conversations.length > 0;
         $('#empty-title').textContent = t(any ? 'empty.titleAny' : 'empty.title');
         $('#empty-text').textContent = t(any ? 'empty.textAny' : 'empty.text');
@@ -540,7 +541,26 @@ function paintConversation() {
         });
     }
 
+    const key = `${conversation.app_id}/${conversation.contact}`;
+
+    if (view.paintedKey !== key) {
+        view.paintedKey = key;
+        revealConversation();
+    }
+
     renderInspector();
+}
+
+function revealConversation() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    [$('#chat-head > div'), $('#messages')].forEach((element, index) => {
+        element.getAnimations().forEach((animation) => animation.cancel());
+        element.animate(
+            [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
+            { duration: 220, delay: index * 50, easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'backwards' },
+        );
+    });
 }
 
 function typeDetail(message) {
